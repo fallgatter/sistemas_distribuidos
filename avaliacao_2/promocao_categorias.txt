@@ -1,0 +1,11 @@
+Veiculos
+Supermercado
+Tecnologia
+Casa
+Eletrodomesticos
+Esportes
+Ferramentas
+Construcao
+Pet Shop
+Saude
+Moda
