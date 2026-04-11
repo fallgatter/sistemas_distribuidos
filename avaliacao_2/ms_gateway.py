@@ -25,12 +25,14 @@ with open("./public_keys/msgateway_publickey.pem", "wb") as f:
     f.write(data)
 
 stop_event = threading.Event()
-lista_promocoes = []
+lista_promocoes = {}
 
 def menu():
     menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     menu_channel = menu_connection.channel()
     menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
+    id_counter = 0
 
     print("Bem vindo!\n")
 
@@ -45,9 +47,14 @@ def menu():
                   "4 - Sair\n")
             try:
                 interface = int(input())
-            except (ValueError, EOFError):
-                print("Entrada inválida.")
+                if interface < 1 or interface > 4:
+                    print("Opção inválida, tente novamente.\n")
+            except ValueError:
+                print("Opção inválida, tente novamente.\n")
                 continue
+            except EOFError:
+                stop_event.set()
+                break
 
             if interface < 1 or interface > 4:
                 print("Opção inválida, tente novamente.\n")
@@ -58,7 +65,7 @@ def menu():
             stop_event.set()
 
         if interface == 1:
-            print("Escolha a categoria da promoção:")
+            print("\nEscolha a categoria da promoção:")
             with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
                 categorys = f.readlines()
             for i, linha in enumerate(categorys):
@@ -73,31 +80,34 @@ def menu():
                 stop_event.set()
                 break
 
-            print("Digite o nome do item em promoção:")
+            print("\nDigite o nome do item em promoção:")
             try:
                 item_name = input()
             except EOFError:
                 stop_event.set()
                 break
 
-            print("Digite o valor do item em promoção:")
+            print("\nDigite o valor do item em promoção:")
             try:
                 price = float(input())
                 while price < 0:
                     print("Valor inválido. O preço deve ser um número positivo.")
                     price = float(input())
-            except (ValueError, EOFError):
-                print("Erro.")
+            except ValueError:
+                print("Valor inválido.")
+                continue
+            except EOFError:
+                stop_event.set()
                 break
             
-            print("Digite o título da promoção:")
+            print("\nDigite o título da promoção:")
             try:
                 title = input()
             except EOFError:
                 stop_event.set()
                 break
 
-            print("Digite a descrição da promoção:")
+            print("\nDigite a descrição da promoção:")
             try:
                 description = input()
             except EOFError:
@@ -107,12 +117,15 @@ def menu():
             routing_key = "promocao.recebida"
             
             body = json.dumps({
+                "id": id_counter,
                 "category": category.strip().lower(),
                 "item_name": item_name,
                 "price": price,
                 "title": title,
                 "description": description
             })
+
+            id_counter += 1
 
             h = SHA256.new(body.encode())
             signature = pkcs1_15.new(key).sign(h)
@@ -133,47 +146,64 @@ def menu():
             if len(lista_promocoes) == 0:
                 print("Nenhuma promoção disponível.")
             else:
-                print("Promoções publicadas:")
-                for i, promocao in enumerate(lista_promocoes):
-                    print(f"{i+1}. {promocao}")
-
+                print("\nPromoções publicadas:")
+                for promocao in lista_promocoes.values():
+                    print(
+                        f"ID {promocao['id']} - {promocao['title']}\n"
+                        f"Categoria: {promocao['category']}\n"
+                        f"Item: {promocao['item_name']}\n"
+                        f"Valor: {promocao['price']}\n"
+                        f"Descrição: {promocao['description']}\n"
+                    )
         elif interface == 3:
             if len(lista_promocoes) == 0:
                 print("Nenhuma promoção disponível para votar.")
-            else:
-                print("Promoções publicadas:")
-                for i, promocao in enumerate(lista_promocoes):
-                    print(f"{i+1}. {promocao}")
-                print("Digite o índice do item que deseja votar:")
+            else:   
+                print("\nPromoções publicadas:")
+                for promocao in lista_promocoes.values():
+                    print(
+                        f"ID {promocao['id']} - {promocao['title']}\n"
+                        f"Categoria: {promocao['category']}\n"
+                        f"Item: {promocao['item_name']}\n"
+                        f"Valor: {promocao['price']}\n"
+                        f"Descrição: {promocao['description']}\n"
+                    )
+                print("\nDigite o ID do item que deseja votar:")
                 try:
-                    item_index = int(input()) - 1
-                    while 0 <= item_index < len(lista_promocoes):
-                        print("Índice inválido. Digite um índice válido:")
-                        item_index = int(input()) - 1
-                    item_name = lista_promocoes[item_index]
-                except (ValueError, EOFError):
-                    print("Erro.")
+                    item_id = int(input())
+                    while item_id not in lista_promocoes:
+                        print("ID inválido. Digite um ID válido:")
+                        item_id = int(input())
+                    item_name = lista_promocoes[item_id]['item_name']
+                except EOFError:
+                    stop_event.set()
                     break
 
                 routing_key = "promocao.voto"
-                body = json.dumps({
-                    "item_name": item_name
-                })
+                body = json.dumps(lista_promocoes[item_id])
+
+                h = SHA256.new(body.encode())
+                signature = pkcs1_15.new(key).sign(h)
 
                 menu_channel.basic_publish(
                     exchange='Promocoes',
                     routing_key=routing_key,
-                    body=body
+                    body=body,
+                    properties=pika.BasicProperties(
+                    headers={
+                        "signature": signature
+                    }
+                    )
                 )
 
-                print("Voto registrado com sucesso!")
+                print("\nVoto registrado com sucesso!")
 
     menu_connection.close()
 
 def callback(ch, method, properties, body):
-    print(f"Promoção recebida. Verificando assinatura...")
+    print(f"\nPromoção recebida. Verificando assinatura...")
     signature = properties.headers.get("signature")
-    key = RSA.import_key(open('mspromocao_publickey.der').read())
+    key = RSA.import_key(open('./public_keys/msgateway_publickey.pem').read())
     h = SHA256.new(body)
     valid_signature = False
     try:
@@ -184,7 +214,7 @@ def callback(ch, method, properties, body):
         print("Assinatura inválida.")
     if valid_signature:
         promocao = json.loads(body)
-        lista_promocoes.append(promocao)
+        lista_promocoes[promocao['id']] = promocao
 
 def consume():
     consume_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
@@ -193,6 +223,8 @@ def consume():
 
     result = consume_channel.queue_declare('fila_gateway', exclusive=True)
     queue_name = result.method.queue
+
+    consume_channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.publicada')
 
     consume_channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
 
