@@ -203,7 +203,7 @@ def menu():
 def callback(ch, method, properties, body):
     print(f"\nPromoção recebida. Verificando assinatura...")
     signature = properties.headers.get("signature")
-    key = RSA.import_key(open('./public_keys/msgateway_publickey.pem').read())
+    key = RSA.import_key(open('./public_keys/mspromocao_publickey.pem').read())
     h = SHA256.new(body)
     valid_signature = False
     try:
