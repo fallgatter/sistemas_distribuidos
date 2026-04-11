@@ -1,9 +1,6 @@
 import json
 import pika
 import os
-from Crypto.Signature import pkcs1_15
-from Crypto.Hash import SHA256
-from Crypto.PublicKey import RSA
 
 pid = str(os.getpid())
 
@@ -16,26 +13,15 @@ queue_name = "fila_cliente" + pid
 result = channel.queue_declare(queue_name, exclusive=True)
 
 def callback(ch, method, properties, body):
-    print(f"Promoção recebida. Verificando assinatura...")
-    signature = properties.headers.get("signature")
-    key = RSA.import_key(open('./public_keys/msnotificacao_publickey.pem').read())
-    h = SHA256.new(body)
-    valid_signature = False
-    try:
-        pkcs1_15.new(key).verify(h, signature)
-        valid_signature = True
-        print("Assinatura válida.")
-    except (ValueError, TypeError):
-        print("Assinatura inválida.")
-    if valid_signature:
-        promocao = json.loads(body)
-        print(
-            f"ID {promocao['id']} - {promocao['title']}\n"
-            f"Categoria: {promocao['category']}\n"
-            f"Item: {promocao['item_name']}\n"
-            f"Valor: {promocao['price']}\n"
-            f"Descrição: {promocao['description']}\n"
-        )
+    
+    promocao = json.loads(body)
+    print(
+        f"ID {promocao['id']} - {promocao['title']}\n"
+        f"Categoria: {promocao['category']}\n"
+        f"Item: {promocao['item_name']}\n"
+        f"Valor: {promocao['price']}\n"
+        f"Descrição: {promocao['description']}\n"
+    )
 
 print(f"Seja bem-vindo, cliente {pid}!")
 print("\nDeseja receber notificações sobre promoções de quais categorias? Digite separado por vírgula (ex: 1, 3, 5):")
