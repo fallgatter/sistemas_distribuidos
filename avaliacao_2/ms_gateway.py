@@ -41,6 +41,7 @@ def menu():
 
     while not stop_event.is_set():
         menu_open = True
+        interface = 0
 
         while menu_open and not stop_event.is_set():
             print("\nSelecione a opção:\n"
@@ -55,7 +56,7 @@ def menu():
             except ValueError:
                 print("Opção inválida, tente novamente.\n")
                 continue
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
 
@@ -79,14 +80,14 @@ def menu():
             except (ValueError, IndexError):
                 print("Categoria inválida.")
                 continue
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
 
             print("\nDigite o nome do item em promoção:")
             try:
                 item_name = input()
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
 
@@ -99,21 +100,21 @@ def menu():
             except ValueError:
                 print("Valor inválido.")
                 continue
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
             
             print("\nDigite o título da promoção:")
             try:
                 title = input()
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
 
             print("\nDigite a descrição da promoção:")
             try:
                 description = input()
-            except EOFError:
+            except EOFError or KeyboardInterrupt:
                 stop_event.set()
                 break
 
@@ -121,7 +122,7 @@ def menu():
             
             body = json.dumps({
                 "id": id_counter,
-                "category": category.strip().lower(),
+                "category": category.strip(),
                 "item_name": item_name,
                 "price": price,
                 "title": title,
@@ -158,6 +159,7 @@ def menu():
                         f"Valor: {promocao['price']}\n"
                         f"Descrição: {promocao['description']}\n"
                     )
+
         elif interface == 3:
             if len(lista_promocoes) == 0:
                 print("Nenhuma promoção disponível para votar.")
@@ -171,14 +173,28 @@ def menu():
                         f"Valor: {promocao['price']}\n"
                         f"Descrição: {promocao['description']}\n"
                     )
+
                 print("\nDigite o ID do item que deseja votar:")
                 try:
                     item_id = int(input())
                     while item_id not in lista_promocoes:
                         print("ID inválido. Digite um ID válido:")
                         item_id = int(input())
-                    item_name = lista_promocoes[item_id]['item_name']
-                except EOFError:
+                except EOFError or KeyboardInterrupt:
+                    stop_event.set()
+                    break
+
+                print("\nDigite 1 para votar positivamente ou 0 para votar negativamente:")
+                try:
+                    vote = int(input())
+                    while vote not in [0, 1]:
+                        print("Opção inválida. Digite 1 para votar positivamente ou 0 para votar negativamente:")
+                        vote = int(input())
+                    if vote == 1:
+                        vote = "upvote"
+                    else:
+                        vote = "downvote"
+                except EOFError or KeyboardInterrupt:
                     stop_event.set()
                     break
 
@@ -194,7 +210,8 @@ def menu():
                     body=body,
                     properties=pika.BasicProperties(
                     headers={
-                        "signature": signature
+                        "signature": signature,
+                        "vote": vote
                     }
                     )
                 )
@@ -204,8 +221,11 @@ def menu():
     menu_connection.close()
 
 def callback(ch, method, properties, body):
-    print(f"\nPromoção recebida. Verificando assinatura...")
+    print(f"Promoção publicada recebida. Verificando assinatura...")
     signature = properties.headers.get("signature")
+    if signature is None:
+        print("Evento sem assinatura.")
+        return
     key = RSA.import_key(open('./public_keys/mspromocao_publickey.pem').read())
     h = SHA256.new(body)
     valid_signature = False
@@ -242,7 +262,9 @@ if __name__ == '__main__':
 
     menu_thread = threading.Thread(target=menu)
     menu_thread.start()
-
-    menu_thread.join()
-
-    consume_thread.join()
+    
+    try:
+        menu_thread.join()
+        consume_thread.join()
+    except KeyboardInterrupt:
+        exit(1)

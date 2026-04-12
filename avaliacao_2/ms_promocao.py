@@ -26,27 +26,30 @@ else:
         data = public_key.export_key()
         f.write(data)
 
-with open("./public_keys/msgateway_publickey.pem", "rb") as f:
-    data = f.read()
-    gateway_pub_key = RSA.import_key(data)
-
+if os.path.exists("./public_keys/msgateway_publickey.pem"):
+    with open("./public_keys/msgateway_publickey.pem", "rb") as f:
+        data = f.read()
+        gateway_pub_key = RSA.import_key(data)
+else:
+    print("Public Key do MS Gateway não encontrada. Execute o ms_gateway.py primeiro.")
+    exit(1)
 
 def callback(ch, method, properties, body):
-    print("Evento recebido")
+    print("Promoção recebida. Verificando assinatura...")
     
     signature = properties.headers.get("signature")
     if signature is None:
-        print("Evento sem assinatura")
+        print("Evento sem assinatura.")
         return
      
     h = SHA256.new(body)
 
     try:
         pkcs1_15.new(gateway_pub_key).verify(h, signature)
-        print("Assinatura valida")
+        print("Assinatura válida.")
 
     except (ValueError, TypeError):
-        print("Assinatura invalida")
+        print("Assinatura inválida.")
         return
 
     try:
@@ -61,10 +64,10 @@ def callback(ch, method, properties, body):
                 }
             )
         )
-        print("Promocao publicada")
+        print("Promoção publicada.")
 
     except Exception as e:
-        print("erro ao publicar", e)
+        print("Erro ao publicar.", e)
     
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))

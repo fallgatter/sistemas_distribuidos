@@ -1,26 +1,35 @@
 import json
+import os
 import pika
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 
-with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
-    data = f.read()
-    promocao_pub_key = RSA.import_key(data)
+if os.path.exists("./public_keys/mspromocao_publickey.pem"):
+    with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
+        data = f.read()
+        promocao_pub_key = RSA.import_key(data)
+else:
+    print("Public Key do MS Promoção não encontrada. Execute o ms_promocao.py primeiro.")
+    exit(1)
 
-with open("./public_keys/msranking_publickey.pem", "rb") as f:
-    data = f.read()
-    ranking_pub_key = RSA.import_key(data)
+if os.path.exists("./public_keys/msranking_publickey.pem"):
+    with open("./public_keys/msranking_publickey.pem", "rb") as f:
+        data = f.read()
+        ranking_pub_key = RSA.import_key(data)
+else:
+    print("Public Key do MS Ranking não encontrada. Execute o ms_ranking.py primeiro.")
+    exit(1)
 
 with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
     lista_categorias = f.readlines()
 
 def callback(ch, method, properties, body):
-    print("Evento recebido")
+    print("Promoção recebida. Verificando assinatura...")
 
     signature = properties.headers.get("signature")
     if signature is None:
-        print("Evento sem assinatura")
+        print("Evento sem assinatura.")
         return
     
     routing_key = method.routing_key
@@ -29,7 +38,7 @@ def callback(ch, method, properties, body):
     elif routing_key == 'promocao.destaque':
         pub_key = ranking_pub_key
     else:
-        print("Evento com routing key desconhecida")
+        print("Evento com routing key desconhecida.")
         return
 
     h = SHA256.new(body)
@@ -42,14 +51,13 @@ def callback(ch, method, properties, body):
         print("Assinatura invalida")
         return
 
-
     try:
         promocao = json.loads(body)
         categoria = promocao.get("category")
         indice=-1
 
         for i, linha in enumerate(lista_categorias):
-            if linha.strip().lower() == categoria.lower():
+            if linha.strip() == categoria:
                 indice = i
                 break
 
@@ -58,8 +66,8 @@ def callback(ch, method, properties, body):
 
             if routing_key == "promocao.destaque":
                 promocao["title"] = f"HOT DEAL: {promocao['title']}"
-                print("HOT DEAL DETECTED")
-                print({promocao['title']})
+                print("HOT DEAL recebido!")
+                print(promocao['title'])
 
             new_body = json.dumps(promocao)
         
@@ -73,14 +81,14 @@ def callback(ch, method, properties, body):
             print(f"Categoria '{categoria}' não mapeada")
 
     except Exception as e:
-        print("erro ao publicar promoção", e)
+        print("Erro ao publicar promoção", e)
 
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-channel =connection.channel()
+channel = connection.channel()
 channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-result =channel.queue_declare('fila_notificacao', exclusive=True)
+result = channel.queue_declare('fila_notificacao', exclusive=True)
 queue_name = result.method.queue
 
 channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.publicada')
