@@ -63,7 +63,7 @@ def callback(ch, method, properties, body):
         if promocao['id'] in lista_promocoes:
             if properties.headers.get("vote") == "upvote":
                 lista_promocoes[promocao['id']]['votos'] += 1
-                if (lista_promocoes[promocao['id']]['votos'])%HOT_DEAL_THRESHOLD == 0:
+                if (lista_promocoes[promocao['id']]['votos']) == HOT_DEAL_THRESHOLD+1:
                     print(f"Promoção {promocao['id']} atingiu o status de hot deal!")
                     h = SHA256.new(body)
                     signature = pkcs1_15.new(mykey).sign(h)
