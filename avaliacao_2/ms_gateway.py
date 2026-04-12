@@ -1,28 +1,31 @@
 import json
 import pika
 import threading
+import os
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 
-key = RSA.generate(2048)
-
 pwd = b'senha'
-with open("./private_keys/msgateway_privatekey.pem", "wb") as f:
-    data = key.export_key(passphrase=pwd,
-                          pkcs=8,
-                          protection='PBKDF2WithHMAC-SHA512AndAES256-CBC',
-                          prot_params={'iteration_count':131072})
-    f.write(data)
 
-with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
-    data = f.read()
-    mykey = RSA.import_key(data, pwd)
+if os.path.exists("./private_keys/msgateway_privatekey.pem"):
+    with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
+        data = f.read()
+        mykey = RSA.import_key(data, pwd)
 
-with open("./public_keys/msgateway_publickey.pem", "wb") as f:
-    public_key = key.publickey()
-    data = public_key.export_key()
-    f.write(data)
+else: 
+    mykey = RSA.generate(2048)
+    with open("./private_keys/msgateway_privatekey.pem", "wb") as f:
+        data = mykey.export_key(passphrase=pwd,
+                              pkcs=8,
+                              protection='PBKDF2WithHMAC-SHA512AndAES256-CBC',
+                              prot_params={'iteration_count':131072})
+        f.write(data)
+
+    with open("./public_keys/msgateway_publickey.pem", "wb") as f:
+        public_key = mykey.publickey()
+        data = public_key.export_key()
+        f.write(data)
 
 stop_event = threading.Event()
 lista_promocoes = {}
@@ -128,7 +131,7 @@ def menu():
             id_counter += 1
 
             h = SHA256.new(body.encode())
-            signature = pkcs1_15.new(key).sign(h)
+            signature = pkcs1_15.new(mykey).sign(h)
 
             menu_channel.basic_publish(
                 exchange='Promocoes',
@@ -183,7 +186,7 @@ def menu():
                 body = json.dumps(lista_promocoes[item_id])
 
                 h = SHA256.new(body.encode())
-                signature = pkcs1_15.new(key).sign(h)
+                signature = pkcs1_15.new(mykey).sign(h)
 
                 menu_channel.basic_publish(
                     exchange='Promocoes',
