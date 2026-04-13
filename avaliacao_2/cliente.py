@@ -10,7 +10,7 @@ channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
 queue_name = "fila_cliente" + pid
 
-result = channel.queue_declare(queue_name, exclusive=True)
+result = channel.queue_declare(queue_name, durable=True, exclusive=True)
 
 def callback(ch, method, properties, body):
     promocao = json.loads(body)
@@ -28,8 +28,12 @@ print("\nDeseja receber notificações sobre promoções de quais categorias? Di
 with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
     categorys_list = f.readlines()
 
-for i, linha in enumerate(categorys_list):
+i = 0
+for linha in categorys_list:
     print(f"Categoria {i+1}: {linha.strip()}")
+    i += 1
+
+print(f"Categoria {i+1}: Destaques")
 
 categorys_valid = 0
 
@@ -39,7 +43,7 @@ while not categorys_valid:
         categorys = [int(c.strip()) - 1 for c in categorys]
         categorys_valid = 1
         for c in categorys:
-            if c < 0 or c >= len(categorys_list):
+            if c < 0 or c >= len(categorys_list)+1:
                 categorys_valid = 0
                 print(f"Categoria {c + 1} inválida.")
         if categorys_valid == 0:
@@ -52,7 +56,10 @@ while not categorys_valid:
 print(f"Você optou por receber notificações de promoções das categorias {', '.join(str(c + 1) for c in categorys)}.")
 
 for c in categorys:
-    routing_key = f"promocao.categoria{c}"
+    if c == len(categorys_list):
+        routing_key = "promocao.destaque"
+    else:
+        routing_key = f"promocao.categoria{c}"
     channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key=routing_key)
 
 channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)

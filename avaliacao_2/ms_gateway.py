@@ -244,7 +244,7 @@ def consume():
     consume_channel = consume_connection.channel()
     consume_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-    result = consume_channel.queue_declare('fila_gateway', exclusive=True)
+    result = consume_channel.queue_declare('fila_gateway', durable=True, exclusive=True)
     queue_name = result.method.queue
 
     consume_channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.publicada')

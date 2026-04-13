@@ -94,7 +94,7 @@ connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost')
 channel = connection.channel()
 channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-result = channel.queue_declare('fila_ranking', exclusive=True)
+result = channel.queue_declare('fila_ranking', durable=True, exclusive=True)
 queue_name = result.method.queue
 
 channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.voto')

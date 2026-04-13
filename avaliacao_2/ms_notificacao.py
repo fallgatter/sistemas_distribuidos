@@ -65,7 +65,8 @@ def callback(ch, method, properties, body):
             new_routing_key = f"promocao.categoria{indice}"
 
             if routing_key == "promocao.destaque":
-                promocao["title"] = f"HOT DEAL: {promocao['title']}"
+                if not promocao['title'].startswith("HOT DEAL:"):
+                    promocao["title"] = f"HOT DEAL: {promocao['title']}"
                 print("HOT DEAL recebido!")
                 print(promocao['title'])
 
@@ -78,17 +79,17 @@ def callback(ch, method, properties, body):
             )
             print(f"Evento enviado para {new_routing_key}")
         else:
-            print(f"Categoria '{categoria}' não mapeada")
+            print(f"Categoria '{categoria}' não mapeada.")
 
     except Exception as e:
-        print("Erro ao publicar promoção", e)
+        print("Erro ao publicar promoção.", e)
 
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
 channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-result = channel.queue_declare('fila_notificacao', exclusive=True)
+result = channel.queue_declare('fila_notificacao', durable=True, exclusive=True)
 queue_name = result.method.queue
 
 channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.publicada')
