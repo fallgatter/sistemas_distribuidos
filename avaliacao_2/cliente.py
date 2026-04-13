@@ -50,7 +50,7 @@ while not categorys_valid:
             print("Digite categorias válidas, separadas por vírgula (ex: 1, 3, 5):")
     except ValueError:
         print("Entrada inválida. Digite categorias válidas, separadas por vírgula (ex: 1, 3, 5):")
-    except EOFError or KeyboardInterrupt:
+    except (EOFError, KeyboardInterrupt):
         exit(1)
         
 print(f"Você optou por receber notificações de promoções das categorias {', '.join(str(c + 1) for c in categorys)}.")

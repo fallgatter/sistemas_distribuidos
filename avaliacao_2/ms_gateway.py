@@ -31,10 +31,6 @@ stop_event = threading.Event()
 lista_promocoes = {}
 
 def menu():
-    menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-    menu_channel = menu_connection.channel()
-    menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
-
     id_counter = 0
 
     print("Bem vindo!\n")
@@ -56,7 +52,7 @@ def menu():
             except ValueError:
                 print("Opção inválida, tente novamente.\n")
                 continue
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
@@ -80,14 +76,14 @@ def menu():
             except (ValueError, IndexError):
                 print("Categoria inválida.")
                 continue
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
             print("\nDigite o nome do item em promoção:")
             try:
                 item_name = input()
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
@@ -100,21 +96,21 @@ def menu():
             except ValueError:
                 print("Valor inválido.")
                 continue
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
             
             print("\nDigite o título da promoção:")
             try:
                 title = input()
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
             print("\nDigite a descrição da promoção:")
             try:
                 description = input()
-            except EOFError or KeyboardInterrupt:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
@@ -128,6 +124,10 @@ def menu():
                 "title": title,
                 "description": description
             })
+
+            menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+            menu_channel = menu_connection.channel()
+            menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
             id_counter += 1
 
@@ -144,6 +144,8 @@ def menu():
                     }
                 )
             )
+
+            menu_connection.close()
             print("Promoção cadastrada com sucesso!")
 
         elif interface == 2:
@@ -180,7 +182,7 @@ def menu():
                     while item_id not in lista_promocoes:
                         print("ID inválido. Digite um ID válido:")
                         item_id = int(input())
-                except EOFError or KeyboardInterrupt:
+                except (EOFError, KeyboardInterrupt):
                     stop_event.set()
                     break
 
@@ -194,7 +196,7 @@ def menu():
                         vote = "upvote"
                     else:
                         vote = "downvote"
-                except EOFError or KeyboardInterrupt:
+                except (EOFError, KeyboardInterrupt):
                     stop_event.set()
                     break
 
@@ -203,6 +205,10 @@ def menu():
 
                 h = SHA256.new(body.encode())
                 signature = pkcs1_15.new(mykey).sign(h)
+
+                menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+                menu_channel = menu_connection.channel()
+                menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
                 menu_channel.basic_publish(
                     exchange='Promocoes',
@@ -216,9 +222,9 @@ def menu():
                     )
                 )
 
-                print("\nVoto registrado com sucesso!")
+                menu_connection.close()
 
-    menu_connection.close()
+                print("\nVoto registrado com sucesso!")
 
 def callback(ch, method, properties, body):
     print(f"Promoção publicada recebida. Verificando assinatura...")
