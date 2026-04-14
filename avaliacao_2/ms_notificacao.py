@@ -45,10 +45,10 @@ def callback(ch, method, properties, body):
 
     try:
         pkcs1_15.new(pub_key).verify(h, signature)
-        print("Assinatura valida")
+        print("Assinatura válida.")
 
     except (ValueError, TypeError):
-        print("Assinatura invalida")
+        print("Assinatura inválida.")
         return
 
     try:
@@ -77,7 +77,7 @@ def callback(ch, method, properties, body):
                 routing_key=new_routing_key, 
                 body=new_body
             )
-            print(f"Evento enviado para {new_routing_key}")
+            print(f"Evento enviado para {new_routing_key}.")
         else:
             print(f"Categoria '{categoria}' não mapeada.")
 

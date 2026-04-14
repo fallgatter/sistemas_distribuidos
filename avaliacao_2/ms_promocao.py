@@ -69,7 +69,6 @@ def callback(ch, method, properties, body):
     except Exception as e:
         print("Erro ao publicar.", e)
     
-
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
 channel.exchange_declare(exchange='Promocoes', exchange_type='topic')

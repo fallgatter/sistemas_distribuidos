@@ -27,6 +27,15 @@ else:
         data = public_key.export_key()
         f.write(data)
 
+if os.path.exists("./public_keys/mspromocao_publickey.pem"):
+    with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
+        data = f.read()
+        promocao_pub_key = RSA.import_key(data)
+else:
+    print("Public Key do MS Promoção não encontrada. Execute o ms_promocao.py primeiro.")
+    exit(1)
+
+
 stop_event = threading.Event()
 lista_promocoes = {}
 
@@ -56,10 +65,7 @@ def menu():
                 stop_event.set()
                 break
 
-            if interface < 1 or interface > 4:
-                print("Opção inválida, tente novamente.\n")
-            else:
-                menu_open = False
+            menu_open = False
 
         if interface == 4:
             stop_event.set()
@@ -229,18 +235,22 @@ def menu():
 def callback(ch, method, properties, body):
     print(f"Promoção publicada recebida. Verificando assinatura...")
     signature = properties.headers.get("signature")
+
     if signature is None:
         print("Evento sem assinatura.")
         return
-    key = RSA.import_key(open('./public_keys/mspromocao_publickey.pem').read())
+    
     h = SHA256.new(body)
+
     valid_signature = False
+
     try:
-        pkcs1_15.new(key).verify(h, signature)
+        pkcs1_15.new(promocao_pub_key).verify(h, signature)
         valid_signature = True
         print("Assinatura válida.")
     except (ValueError, TypeError):
         print("Assinatura inválida.")
+        
     if valid_signature:
         promocao = json.loads(body)
         lista_promocoes[promocao['id']] = promocao
