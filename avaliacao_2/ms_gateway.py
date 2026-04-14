@@ -1,43 +1,52 @@
 import json
 import pika
 import threading
+import os
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 
-key = RSA.generate(2048)
-
 pwd = b'senha'
-with open("./private_keys/msgateway_privatekey.pem", "wb") as f:
-    data = key.export_key(passphrase=pwd,
-                          pkcs=8,
-                          protection='PBKDF2WithHMAC-SHA512AndAES256-CBC',
-                          prot_params={'iteration_count':131072})
-    f.write(data)
 
-with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
-    data = f.read()
-    mykey = RSA.import_key(data, pwd)
+if os.path.exists("./private_keys/msgateway_privatekey.pem"):
+    with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
+        data = f.read()
+        mykey = RSA.import_key(data, pwd)
 
-with open("./public_keys/msgateway_publickey.pem", "wb") as f:
-    public_key = key.publickey()
-    data = public_key.export_key()
-    f.write(data)
+else: 
+    mykey = RSA.generate(2048)
+    with open("./private_keys/msgateway_privatekey.pem", "wb") as f:
+        data = mykey.export_key(passphrase=pwd,
+                              pkcs=8,
+                              protection='PBKDF2WithHMAC-SHA512AndAES256-CBC',
+                              prot_params={'iteration_count':131072})
+        f.write(data)
+
+    with open("./public_keys/msgateway_publickey.pem", "wb") as f:
+        public_key = mykey.publickey()
+        data = public_key.export_key()
+        f.write(data)
+
+if os.path.exists("./public_keys/mspromocao_publickey.pem"):
+    with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
+        data = f.read()
+        promocao_pub_key = RSA.import_key(data)
+else:
+    print("Public Key do MS Promoção não encontrada. Execute o ms_promocao.py primeiro.")
+    exit(1)
+
 
 stop_event = threading.Event()
 lista_promocoes = {}
 
 def menu():
-    menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-    menu_channel = menu_connection.channel()
-    menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
-
     id_counter = 0
 
     print("Bem vindo!\n")
 
     while not stop_event.is_set():
         menu_open = True
+        interface = 0
 
         while menu_open and not stop_event.is_set():
             print("\nSelecione a opção:\n"
@@ -52,14 +61,11 @@ def menu():
             except ValueError:
                 print("Opção inválida, tente novamente.\n")
                 continue
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
-            if interface < 1 or interface > 4:
-                print("Opção inválida, tente novamente.\n")
-            else:
-                menu_open = False
+            menu_open = False
 
         if interface == 4:
             stop_event.set()
@@ -76,14 +82,14 @@ def menu():
             except (ValueError, IndexError):
                 print("Categoria inválida.")
                 continue
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
             print("\nDigite o nome do item em promoção:")
             try:
                 item_name = input()
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
@@ -96,21 +102,21 @@ def menu():
             except ValueError:
                 print("Valor inválido.")
                 continue
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
             
             print("\nDigite o título da promoção:")
             try:
                 title = input()
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
             print("\nDigite a descrição da promoção:")
             try:
                 description = input()
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
                 stop_event.set()
                 break
 
@@ -118,17 +124,21 @@ def menu():
             
             body = json.dumps({
                 "id": id_counter,
-                "category": category.strip().lower(),
+                "category": category.strip(),
                 "item_name": item_name,
                 "price": price,
                 "title": title,
                 "description": description
             })
 
+            menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+            menu_channel = menu_connection.channel()
+            menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
             id_counter += 1
 
             h = SHA256.new(body.encode())
-            signature = pkcs1_15.new(key).sign(h)
+            signature = pkcs1_15.new(mykey).sign(h)
 
             menu_channel.basic_publish(
                 exchange='Promocoes',
@@ -140,6 +150,8 @@ def menu():
                     }
                 )
             )
+
+            menu_connection.close()
             print("Promoção cadastrada com sucesso!")
 
         elif interface == 2:
@@ -155,6 +167,7 @@ def menu():
                         f"Valor: {promocao['price']}\n"
                         f"Descrição: {promocao['description']}\n"
                     )
+
         elif interface == 3:
             if len(lista_promocoes) == 0:
                 print("Nenhuma promoção disponível para votar.")
@@ -168,14 +181,28 @@ def menu():
                         f"Valor: {promocao['price']}\n"
                         f"Descrição: {promocao['description']}\n"
                     )
+
                 print("\nDigite o ID do item que deseja votar:")
                 try:
                     item_id = int(input())
                     while item_id not in lista_promocoes:
                         print("ID inválido. Digite um ID válido:")
                         item_id = int(input())
-                    item_name = lista_promocoes[item_id]['item_name']
-                except EOFError:
+                except (EOFError, KeyboardInterrupt):
+                    stop_event.set()
+                    break
+
+                print("\nDigite 1 para votar positivamente ou 0 para votar negativamente:")
+                try:
+                    vote = int(input())
+                    while vote not in [0, 1]:
+                        print("Opção inválida. Digite 1 para votar positivamente ou 0 para votar negativamente:")
+                        vote = int(input())
+                    if vote == 1:
+                        vote = "upvote"
+                    else:
+                        vote = "downvote"
+                except (EOFError, KeyboardInterrupt):
                     stop_event.set()
                     break
 
@@ -183,7 +210,11 @@ def menu():
                 body = json.dumps(lista_promocoes[item_id])
 
                 h = SHA256.new(body.encode())
-                signature = pkcs1_15.new(key).sign(h)
+                signature = pkcs1_15.new(mykey).sign(h)
+
+                menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+                menu_channel = menu_connection.channel()
+                menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
                 menu_channel.basic_publish(
                     exchange='Promocoes',
@@ -191,27 +222,35 @@ def menu():
                     body=body,
                     properties=pika.BasicProperties(
                     headers={
-                        "signature": signature
+                        "signature": signature,
+                        "vote": vote
                     }
                     )
                 )
 
+                menu_connection.close()
+
                 print("\nVoto registrado com sucesso!")
 
-    menu_connection.close()
-
 def callback(ch, method, properties, body):
-    print(f"\nPromoção recebida. Verificando assinatura...")
+    print(f"Promoção publicada recebida. Verificando assinatura...")
     signature = properties.headers.get("signature")
-    key = RSA.import_key(open('./public_keys/mspromocao_publickey.pem').read())
+
+    if signature is None:
+        print("Evento sem assinatura.")
+        return
+    
     h = SHA256.new(body)
+
     valid_signature = False
+
     try:
-        pkcs1_15.new(key).verify(h, signature)
+        pkcs1_15.new(promocao_pub_key).verify(h, signature)
         valid_signature = True
         print("Assinatura válida.")
     except (ValueError, TypeError):
         print("Assinatura inválida.")
+        
     if valid_signature:
         promocao = json.loads(body)
         lista_promocoes[promocao['id']] = promocao
@@ -221,7 +260,7 @@ def consume():
     consume_channel = consume_connection.channel()
     consume_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-    result = consume_channel.queue_declare('fila_gateway', exclusive=True)
+    result = consume_channel.queue_declare('fila_gateway', durable=True, exclusive=True)
     queue_name = result.method.queue
 
     consume_channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key='promocao.publicada')
@@ -239,7 +278,9 @@ if __name__ == '__main__':
 
     menu_thread = threading.Thread(target=menu)
     menu_thread.start()
-
-    menu_thread.join()
-
-    consume_thread.join()
+    
+    try:
+        menu_thread.join()
+        consume_thread.join()
+    except KeyboardInterrupt:
+        exit(1)
