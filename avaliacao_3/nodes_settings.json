@@ -1,0 +1,31 @@
+{
+    "node1": 
+    {
+        "id": "node1",
+        "host": "localhost",
+        "port": 65535,
+        "uri": "PYRO:node1@localhost:65535"
+    },
+    "node2":
+    {
+        "id": "node2",
+        "host": "localhost",
+        "port": 65534,
+        "uri": "PYRO:node2@localhost:65534"
+
+    },
+    "node3":
+    {
+        "id": "node3",
+        "host": "localhost",
+        "port": 65533,
+        "uri": "PYRO:node3@localhost:65533"
+    },
+    "node4":
+    {
+        "id": "node4",
+        "host": "localhost",
+        "port": 65532,
+        "uri": "PYRO:node4@localhost:65532"
+    }
+}
