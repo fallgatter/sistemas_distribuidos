@@ -52,6 +52,12 @@ class Node:
 
     @Pyro5.api.expose
     def request_vote(self, candidate_id, term):
+        if candidate_id not in self.friends and candidate_id != self.node_id:
+            with open(f'nodes_settings.json', 'r') as f:
+                json_data = json.load(f)
+            node = json_data[candidate_id]
+            self.friends[candidate_id] = node['uri']
+        
         if term > self.current_term:
             self.current_term = term
             self.state = 'follower'
@@ -62,7 +68,7 @@ class Node:
 
         if self.voted_for is None or self.voted_for == candidate_id:
             self.voted_for = candidate_id
-            self.received_heartbeat = True  # ajuda a segurar eleição
+            self.received_heartbeat = True
             print(f"Node {self.node_id} voted for {candidate_id} in term {term}")
             return True
 
@@ -92,7 +98,7 @@ class Node:
 
         print(f"Node {self.node_id} is starting an election for term {self.current_term}")
 
-        for friend_id, friend_uri in self.friends.items():
+        for friend_id, friend_uri in list(self.friends.items()):
             try:
                 with Pyro5.api.Proxy(friend_uri) as proxy:
                     proxy._pyroTimeout = 0.5
@@ -100,6 +106,8 @@ class Node:
                         self.votes += 1
             except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
                 print(f"Timeout while requesting vote from {friend_id}")
+                if friend_id in self.friends:
+                    del self.friends[friend_id]
             except Exception as e:
                 print(f"Failed to request vote from {friend_id}: {e}")
                 
@@ -108,7 +116,7 @@ class Node:
             self.state = 'leader'
             print(f"Node {self.node_id} became the leader for term {self.current_term}")
             self.send_heartbeat()
-        
+            
         else:
             self.state = 'follower'
 
@@ -117,14 +125,17 @@ class Node:
         t.start()
 
     def heartbeat(self):
+        print(len(self.friends))
         while self.state == 'leader':
-            for friend_id, friend_uri in self.friends.items():
+            for friend_id, friend_uri in list(self.friends.items()):
                 try:
                     with Pyro5.api.Proxy(friend_uri) as proxy:
                         proxy._pyroTimeout = 0.5
                         proxy.append_entry(self.node_id, self.current_term)
                 except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
                     print(f"Timeout while sending heartbeat to {friend_id}")
+                    if friend_id in self.friends:
+                        del self.friends[friend_id]
                 except Exception as e:
                     print(f"Failed to send heartbeat to {friend_id}: {e}")     
             time.sleep(0.25)
@@ -141,7 +152,7 @@ class Node:
             return False
         
         if entry is None:
-            print(f"Heartbeat recebido de {node_id} no termo {term}")
+            print(f"Heartbeat received from {node_id} in term {term}")
             self.received_heartbeat = True
         
         return True
