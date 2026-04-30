@@ -115,6 +115,8 @@ class Node:
         if self.votes > (len(self.friends) + 1) // 2 or len(self.friends) == 0:
             self.state = 'leader'
             print(f"Node {self.node_id} became the leader for term {self.current_term}")
+            ns = Pyro5.api.locate_ns()
+            ns.register("Leader", self.uri) 
             self.send_heartbeat()
             
         else:
