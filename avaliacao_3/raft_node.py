@@ -21,6 +21,8 @@ class Node:
         self.voted_for = None
         self.votes = 0
         self.received_heartbeat = False
+        self.nextIndex ={}
+        self.matchIndex = {}
 
         with open(f'nodes_settings.json', 'r') as f:
             json_data = json.load(f)
@@ -85,6 +87,7 @@ class Node:
 
     def election_timer(self):
         while True:
+            self.election_timeout = random.uniform(1, 10)
             start = time.time()
 
             while time.time() - start < self.election_timeout:
@@ -94,12 +97,9 @@ class Node:
                     self.received_heartbeat = False
                     start = time.time()
 
-            self.state = 'candidate'
-
-            self.election_term()
-
-            if self.state == 'leader':
-                break
+            if self.state != "leader":
+                self.state = 'candidate'
+                self.election_term()
 
     def election_term(self):
         self.current_term += 1
@@ -112,13 +112,11 @@ class Node:
             try:
                 with Pyro5.api.Proxy(friend_uri) as proxy:
                     proxy._pyroTimeout = 0.5
-                    
                     if proxy.request_vote(self.node_id, self.current_term, self.last_log_index(), self.last_log_term()):
                         self.votes += 1
             
             except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
                 print(f"Timeout while requesting vote from {friend_id}")
-                
                 if friend_id in self.friends:
                     del self.friends[friend_id]
             
@@ -129,6 +127,11 @@ class Node:
         if self.votes > (len(self.friends) + 1) // 2 or len(self.friends) == 0:
             self.state = 'leader'
             print(f"Node {self.node_id} became the leader for term {self.current_term}")
+            
+            for nid in self.friends:
+                self.nextIndex[nid] = self.last_log_index() + 1
+                self.matchIndex[nid] = -1
+
             ns = Pyro5.api.locate_ns()
             ns.register("Leader", self.uri) 
             self.send_heartbeat()
@@ -145,9 +148,16 @@ class Node:
         while self.state == 'leader':
             for friend_id, friend_uri in list(self.friends.items()):
                 try:
+                    prev_log_index = self.nextIndex[friend_id] - 1
+
+                    if prev_log_index >= 0:
+                        prev_log_term = self.log[prev_log_index]['term']
+                    else:
+                        prev_log_term = 0
+                    
                     with Pyro5.api.Proxy(friend_uri) as proxy:
                         proxy._pyroTimeout = 0.5
-                        proxy.append_entry(self.node_id, self.current_term, self.last_log_index(), self.last_log_term(), None, self.commit_index)
+                        proxy.append_entry(self.node_id, self.current_term, prev_log_index, prev_log_term, [], self.commit_index)
                 
                 except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
                     print(f"Timeout while sending heartbeat to {friend_id}")
@@ -160,35 +170,27 @@ class Node:
             time.sleep(0.25)
 
     @Pyro5.api.expose
-    def append_entry(self, leader_id, term, prev_log_index, prev_log_term, entry, leader_commit):
+    def append_entry(self, leader_id, term, prev_log_index, prev_log_term, entries, leader_commit):
         
         if term > self.current_term:
             self.current_term = term
-            self.state = 'follower'
-            self.received_heartbeat = True
             self.voted_for = None
 
         elif term < self.current_term:
             return False
         
+        self.state = 'follower'
+        self.received_heartbeat = True
+
         if prev_log_index >= 0 :
             if prev_log_index >= len(self.log) or self.log[prev_log_index]['term'] != prev_log_term:
                 return False
                     
-        if entry is None:
-            print(f"Heartbeat received from {leader_id} in term {term}")
-            self.received_heartbeat = True
-            return True
-
-        next_log_index = prev_log_index + 1
+        if not entries:
+            print(f"{self.node_id} received heartbeat from {leader_id}")
         
-        if next_log_index < len(self.log):
-            if self.log[next_log_index]['term'] != entry['term']:
-                while len(self.log) > next_log_index:
-                    self.log.pop()
-
-        self.log.append(entry)
-        print(f"{self.node_id} appended entry from {leader_id} in term {term}: {entry}")
+        else:
+            self.log = self.log[:prev_log_index + 1] + entries
 
         if leader_commit > self.commit_index:
             self.commit_index = min(leader_commit, len(self.log) - 1)
@@ -196,34 +198,38 @@ class Node:
         return True
 
     def replicate_log_entries(self, entry):
+        if self.state != "leader":
+            return False
+
         acks = 1
-
-        prev_log_index = self.last_log_index() - 1
-
-        if prev_log_index >= 0:
-            prev_log_term = self.log[prev_log_index]['term']
-        else:
-            prev_log_term = 0
 
         for friend_id, friend_uri in list(self.friends.items()):
             try:
+                prev_log_index = self.nextIndex[friend_id] - 1
+                if prev_log_index >= 0:
+                    prev_log_term = self.log[prev_log_index]['term']
+                else:
+                    prev_log_term = 0
+                
                 with Pyro5.api.Proxy(friend_uri) as proxy:
                     proxy._pyroTimeout = 0.5
-                    response =proxy.append_entry(self.node_id, self.current_term, prev_log_index, prev_log_term, entry, self.commit_index)
+                    response =proxy.append_entry(self.node_id, self.current_term, prev_log_index, prev_log_term, [entry], self.commit_index)
                     
-                    if response: 
+                    if response:
+                        self.matchIndex[friend_id] = prev_log_index + 1
+                        self.nextIndex[friend_id] = self.matchIndex[friend_id] + 1
                         acks += 1
+                    else:
+                        self.handle_log_consistency(friend_id, proxy)
             
             except Exception as e:
                 print(f"Failed to replicate log entry to {friend_id}: {e}")
 
         total_nodes = len(self.friends) + 1
         
-        if acks > total_nodes // 2:
-            self.commit_index += 1
+        if acks > total_nodes // 2:            
+            self.commit_entries(prev_log_index + 1)
             print(f"{self.node_id} committed log entry: {entry}")
-            
-            self.commit_entries(self.commit_index)
             
             for friend_id, friend_uri in list(self.friends.items()):
                 try:
@@ -237,12 +243,35 @@ class Node:
             print(f"{self.node_id} failed to commit log entry: {entry}")
             return False
 
+    def handle_log_consistency(self, friend_id, proxy):
+        while self.state == 'leader':
+            self.nextIndex[friend_id] = max(0, self.nextIndex[friend_id] - 1)
+            new_idx = self.nextIndex[friend_id] - 1 
+            if new_idx >= 0: 
+                term = self.log[new_idx]['term']
+            else: 
+                term = 0
+
+            entries_missing = self.log[self.nextIndex[friend_id]:]
+            try:
+                response = proxy.append_entry(self.node_id, self.current_term, new_idx, term, entries_missing, self.commit_index)
+                if response:
+                    self.matchIndex[friend_id] = len(self.log) - 1
+                    self.nextIndex[friend_id] = len(self.log)
+                    break
+            except Exception as e:
+                print(f"Failed to handle log consistency with {friend_id}: {e}")
+                break 
+                
+            if self.nextIndex[friend_id] <= 0:
+                break
+
     @Pyro5.api.expose
     def commit_entries(self, commit_index):
         if commit_index > self.commit_index:
             self.commit_index = commit_index
             
-            while self.last_applied < self.commit_index:
+            while (self.last_applied < self.commit_index) and (self.last_applied + 1 < len(self.log)):
                 self.last_applied += 1
                 entry = self.log[self.last_applied]
                 print(f"{self.node_id} applied log entry: {entry}")
