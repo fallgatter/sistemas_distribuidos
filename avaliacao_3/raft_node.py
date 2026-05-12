@@ -92,12 +92,12 @@ class Node:
             self.election_timeout = random.uniform(1, 10)
             start = time.time()
 
-            while time.time() - start < self.election_timeout:
-                time.sleep(0.1)
-                
+            while time.time() - start < self.election_timeout:                
                 if self.received_heartbeat:
                     self.received_heartbeat = False
                     start = time.time()
+
+                time.sleep(0.1)
 
             if self.state != "leader":
                 self.state = 'candidate'
@@ -108,39 +108,40 @@ class Node:
         self.votes = 1
         self.voted_for = self.node_id
 
-        print(f"Node {self.node_id} is starting an election for term {self.current_term}")
+        if self.state == 'candidate':
+            print(f"Node {self.node_id} is starting an election for term {self.current_term}")
 
-        for friend_id, friend_uri in self.friends.items():
-            try:
-                with Pyro5.api.Proxy(friend_uri) as proxy:
-                    proxy._pyroTimeout = 0.5
-                    if proxy.request_vote(self.node_id, self.current_term, self.last_log_index(), self.last_log_term()):
-                        print(f"{self.node_id} received vote from {friend_id}")
-                        self.votes += 1
-            
-            except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
-                print(f"Timeout while requesting vote from {friend_id}")
-                if friend_id in self.valid_friends:
-                    del self.valid_friends[friend_id]
-            
-            except Exception as e:
-                print(f"Failed to request vote from {friend_id}: {e}")
+            for friend_id, friend_uri in self.friends.items():
+                try:
+                    with Pyro5.api.Proxy(friend_uri) as proxy:
+                        proxy._pyroTimeout = 0.5
+                        if proxy.request_vote(self.node_id, self.current_term, self.last_log_index(), self.last_log_term()):
+                            print(f"{self.node_id} received vote from {friend_id}")
+                            self.votes += 1
                 
+                except (Pyro5.errors.TimeoutError, Pyro5.errors.CommunicationError):
+                    print(f"Timeout while requesting vote from {friend_id}")
+                    if friend_id in self.valid_friends:
+                        del self.valid_friends[friend_id]
+                
+                except Exception as e:
+                    print(f"Failed to request vote from {friend_id}: {e}")
+                    
 
-        if self.votes > (len(self.valid_friends) + 1) // 2 or len(self.valid_friends) == 0:
-            self.state = 'leader'
-            print(f"Node {self.node_id} became the leader for term {self.current_term}")
-            
-            for nid in self.valid_friends:
-                self.nextIndex[nid] = self.last_log_index() + 1
-                self.matchIndex[nid] = -1
+            if self.votes > (len(self.valid_friends) + 1) // 2 or len(self.valid_friends) == 0:
+                self.state = 'leader'
+                print(f"Node {self.node_id} became the leader for term {self.current_term}")
+                
+                for nid in self.valid_friends:
+                    self.nextIndex[nid] = self.last_log_index() + 1
+                    self.matchIndex[nid] = -1
 
-            ns = Pyro5.api.locate_ns()
-            ns.register("Leader", self.uri) 
-            self.send_heartbeat()
-            
-        else:
-            self.state = 'follower'
+                ns = Pyro5.api.locate_ns()
+                ns.register("Leader", self.uri) 
+                self.send_heartbeat()
+                
+            else:
+                self.state = 'follower'
 
     def send_heartbeat(self):
         for friend_id, friend_uri in self.friends.items():
@@ -194,6 +195,7 @@ class Node:
         if term > self.current_term:
             self.current_term = term
             self.voted_for = None
+            self.state = 'follower'
 
         elif term < self.current_term:
             return False
@@ -203,6 +205,9 @@ class Node:
 
         if prev_log_index >= 0:
             if prev_log_index >= len(self.log) or self.log[prev_log_index]['term'] != prev_log_term:
+                self.log = self.log[:prev_log_index] # If an existing entry conflicts with a new one (same index
+                                                     # but different terms), delete the existing entry and all that
+                                                     # follow it
                 return False
                     
         if not entries:
@@ -249,8 +254,8 @@ class Node:
         total_nodes = len(self.valid_friends) + 1
         
         if acks > total_nodes // 2:            
-            self.commit_entries(prev_log_index + 1)
             print(f"{self.node_id} committed log entry: {entry}")
+            self.commit_entries(prev_log_index + 1)
             
             for friend_id, friend_uri in self.valid_friends.items():
                 try:
