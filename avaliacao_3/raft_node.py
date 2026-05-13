@@ -55,13 +55,6 @@ class Node:
         t.daemon = True
         t.start()
 
-    def last_log_index(self):
-        return len(self.log) - 1
-    
-    def last_log_term(self):
-        if self.log:
-            return self.log[-1]['term']
-        return 0
 
     @Pyro5.api.expose
     def request_vote(self, candidate_id, term, last_log_index, last_log_term):
@@ -79,7 +72,12 @@ class Node:
         if term < self.current_term:
             return False
 
-        if (self.voted_for is None or self.voted_for == candidate_id) and (last_log_term > self.last_log_term() or (last_log_term == self.last_log_term() and last_log_index >= self.last_log_index())):
+        if self.log:
+            mylast_log_term = self.log[-1]['term']
+        else:
+            mylast_log_term = 0
+
+        if (self.voted_for is None or self.voted_for == candidate_id) and (last_log_term > mylast_log_term or (last_log_term == mylast_log_term and last_log_index >= len(self.log) - 1)):
             self.voted_for = candidate_id
             self.received_heartbeat = True
             print(f"{self.node_id} voted for {candidate_id} in term {term}")
@@ -108,6 +106,11 @@ class Node:
         self.votes = 1
         self.voted_for = self.node_id
 
+        if self.log:
+            mylast_log_term = self.log[-1]['term']
+        else:
+            mylast_log_term = 0
+
         if self.state == 'candidate':
             print(f"Node {self.node_id} is starting an election for term {self.current_term}")
 
@@ -115,7 +118,7 @@ class Node:
                 try:
                     with Pyro5.api.Proxy(friend_uri) as proxy:
                         proxy._pyroTimeout = 0.5
-                        if proxy.request_vote(self.node_id, self.current_term, self.last_log_index(), self.last_log_term()):
+                        if proxy.request_vote(self.node_id, self.current_term, len(self.log) - 1, mylast_log_term):
                             print(f"{self.node_id} received vote from {friend_id}")
                             self.votes += 1
                 
@@ -133,7 +136,7 @@ class Node:
                 print(f"Node {self.node_id} became the leader for term {self.current_term}")
                 
                 for nid in self.valid_friends:
-                    self.nextIndex[nid] = self.last_log_index() + 1
+                    self.nextIndex[nid] = len(self.log)
                     self.matchIndex[nid] = -1
 
                 ns = Pyro5.api.locate_ns()
@@ -309,7 +312,7 @@ class Node:
     @Pyro5.api.expose
     def client_request(self, command):
         if self.state != 'leader':
-            return False
+            return False 
 
         entry = {'term': self.current_term, 'command': command}
         
