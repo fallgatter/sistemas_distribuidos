@@ -5,8 +5,24 @@ import os
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
+from flask import Flask, request
+import resend
+
+app = Flask(__name__)
 
 pwd = b'senha'
+
+with open(".env") as f:
+    for linha in f:
+        linha = linha.strip()
+
+        if not linha or linha.startswith("#"):
+            continue
+
+        chave, valor = linha.split("=", 1)
+        os.environ[chave.strip()] = valor.strip()
+
+print(os.environ["RESEND_API_KEY"])
 
 if os.path.exists("./private_keys/msgateway_privatekey.pem"):
     with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
@@ -37,200 +53,148 @@ else:
 
 
 stop_event = threading.Event()
-lista_promocoes = {}
+promocoes = {}
+promocao_id_counter = 0
+loja_id_counter = 0
+lojas = {}
 
-def menu():
-    id_counter = 0
+# espera um json do tipo:
+# ({
+#     "store_name": nome,
+#     "e-mail": email,
+# })
+@app.route('/cadastrar_loja', methods=['POST'])
+def cadastrar_loja():
+    loja = request.get_json()
+    if not loja:
+        return "Dados não presentes. Cadastro cancelado.", 400
+    if not loja["store_name"]:
+        return "Nome da loja vazio. Cadastro cancelado.", 400
+    if not loja["e-mail"]:
+        return "E-mail vazio. Cadastro cancelado.", 400
+    
+    loja["id"] = loja_id_counter
+    lojas[loja_id_counter] = loja
+    loja_id_counter += 1
 
-    print("Bem vindo!\n")
+    return f"Loja cadastrada com sucesso.", 201
 
-    while not stop_event.is_set():
-        menu_open = True
-        interface = 0
+# espera um json do tipo:
+# ({
+#     "category": category.strip(),
+#     "item_name": item_name,
+#     "price": price,
+#     "title": title,
+#     "description": description
+# })
+@app.route('/cadastrar_promocao', methods=['POST'])
+def cadastrar_promocao():
+    promocao = request.get_json()
 
-        while menu_open and not stop_event.is_set():
-            print("\nSelecione a opção:\n"
-                  "1 - Cadastrar nova promoção\n"
-                  "2 - Listar promoções publicadas\n"
-                  "3 - Votar em uma promoção existente\n"
-                  "4 - Sair\n")
-            try:
-                interface = int(input())
-                if interface < 1 or interface > 4:
-                    print("Opção inválida, tente novamente.\n")
-            except ValueError:
-                print("Opção inválida, tente novamente.\n")
-                continue
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
+    if not promocao:
+        return "Dados não presentes. Cadastro cancelado.", 400
 
-            menu_open = False
+    with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
+        categorys = f.readlines()
+    try:
+        promocao["category"] = categorys[int(promocao["category"]) - 1]
+    except (ValueError, IndexError):
+        return "Categoria inválida. Cadastro cancelado.", 400
+    
+    if not promocao["item_name"]:
+        return "Nome do item vazio. Cadastro cancelado.", 400
 
-        if interface == 4:
-            stop_event.set()
+    if not promocao["title"]:
+        return "Título vazio. Cadastro cancelado.", 400
 
-        if interface == 1:
-            print("\nEscolha a categoria da promoção:")
-            with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
-                categorys = f.readlines()
-            for i, linha in enumerate(categorys):
-                print(f"Categoria {i+1}: {linha.strip()}")
+    if not promocao["description"]:
+        return "Descrição vazia. Cadastro cancelado.", 400
 
-            try:
-                category = categorys[int(input()) - 1]
-            except (ValueError, IndexError):
-                print("Categoria inválida.")
-                continue
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
+    try:
+        float(promocao["price"])
+    except ValueError:
+        return "Valor inválido. Cadastro cancelado.", 400
 
-            print("\nDigite o nome do item em promoção:")
-            try:
-                item_name = input()
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
+    routing_key = "promocao.recebida"
+    
+    promocao["id"] = promocao_id_counter
 
-            print("\nDigite o valor do item em promoção:")
-            try:
-                price = float(input())
-                while price < 0:
-                    print("Valor inválido. O preço deve ser um número positivo.")
-                    price = float(input())
-            except ValueError:
-                print("Valor inválido.")
-                continue
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
-            
-            print("\nDigite o título da promoção:")
-            try:
-                title = input()
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
+    menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    menu_channel = menu_connection.channel()
+    menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
-            print("\nDigite a descrição da promoção:")
-            try:
-                description = input()
-            except (EOFError, KeyboardInterrupt):
-                stop_event.set()
-                break
+    promocao_id_counter += 1
 
-            routing_key = "promocao.recebida"
-            
-            body = json.dumps({
-                "id": id_counter,
-                "category": category.strip(),
-                "item_name": item_name,
-                "price": price,
-                "title": title,
-                "description": description
-            })
+    h = SHA256.new(json.dumps(promocao).encode())
+    signature = pkcs1_15.new(mykey).sign(h)
 
-            menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-            menu_channel = menu_connection.channel()
-            menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+    menu_channel.basic_publish(
+        exchange='Promocoes',
+        routing_key=routing_key,
+        body=json.dumps(promocao),
+        properties=pika.BasicProperties(
+            headers={
+                "signature": signature
+            }
+        )
+    )
 
-            id_counter += 1
+    menu_connection.close()
+    return "Promoção cadastrada com sucesso.", 201
 
-            h = SHA256.new(body.encode())
-            signature = pkcs1_15.new(mykey).sign(h)
+@app.route('/listar_promocoes', methods=['GET'])
+def get_promocoes():
+    if len(promocoes) == 0:
+        return "Nenhuma promoção disponível.", 200
+    else:
+        return json.dumps(promocoes), 200
 
-            menu_channel.basic_publish(
-                exchange='Promocoes',
-                routing_key=routing_key,
-                body=body,
-                properties=pika.BasicProperties(
-                    headers={
-                        "signature": signature
-                    }
-                )
+# espera um json do tipo:
+# ({
+#     "id": id
+#     "voto": 1 ou 0
+# })
+@app.route('/votar', methods=['POST'])
+def votar():
+    promocao = request.get_json()
+    if len(promocoes) == 0:
+        return "Nenhuma promoção disponível.", 200
+    else:   
+        if promocao["id"] not in promocoes:
+            return "ID inválido. Voto não registrado.", 400
+
+        if promocao["voto"] not in [0, 1]:
+            return "Voto inválido. Voto não registrado.", 400
+        if promocao["voto"] == 1:
+            vote = "upvote"
+        else:
+            vote = "downvote"
+
+        routing_key = "promocao.voto"
+        body = json.dumps(promocoes[promocao["id"]])
+
+        h = SHA256.new(body.encode())
+        signature = pkcs1_15.new(mykey).sign(h)
+
+        menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        menu_channel = menu_connection.channel()
+        menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
+        menu_channel.basic_publish(
+            exchange='Promocoes',
+            routing_key=routing_key,
+            body=body,
+            properties=pika.BasicProperties(
+            headers={
+                "signature": signature,
+                "vote": vote
+            }
             )
+        )
 
-            menu_connection.close()
-            print("Promoção cadastrada com sucesso!")
+        menu_connection.close()
 
-        elif interface == 2:
-            if len(lista_promocoes) == 0:
-                print("Nenhuma promoção disponível.")
-            else:
-                print("\nPromoções publicadas:")
-                for promocao in lista_promocoes.values():
-                    print(
-                        f"ID {promocao['id']} - {promocao['title']}\n"
-                        f"Categoria: {promocao['category']}\n"
-                        f"Item: {promocao['item_name']}\n"
-                        f"Valor: {promocao['price']}\n"
-                        f"Descrição: {promocao['description']}\n"
-                    )
-
-        elif interface == 3:
-            if len(lista_promocoes) == 0:
-                print("Nenhuma promoção disponível para votar.")
-            else:   
-                print("\nPromoções publicadas:")
-                for promocao in lista_promocoes.values():
-                    print(
-                        f"ID {promocao['id']} - {promocao['title']}\n"
-                        f"Categoria: {promocao['category']}\n"
-                        f"Item: {promocao['item_name']}\n"
-                        f"Valor: {promocao['price']}\n"
-                        f"Descrição: {promocao['description']}\n"
-                    )
-
-                print("\nDigite o ID do item que deseja votar:")
-                try:
-                    item_id = int(input())
-                    while item_id not in lista_promocoes:
-                        print("ID inválido. Digite um ID válido:")
-                        item_id = int(input())
-                except (EOFError, KeyboardInterrupt):
-                    stop_event.set()
-                    break
-
-                print("\nDigite 1 para votar positivamente ou 0 para votar negativamente:")
-                try:
-                    vote = int(input())
-                    while vote not in [0, 1]:
-                        print("Opção inválida. Digite 1 para votar positivamente ou 0 para votar negativamente:")
-                        vote = int(input())
-                    if vote == 1:
-                        vote = "upvote"
-                    else:
-                        vote = "downvote"
-                except (EOFError, KeyboardInterrupt):
-                    stop_event.set()
-                    break
-
-                routing_key = "promocao.voto"
-                body = json.dumps(lista_promocoes[item_id])
-
-                h = SHA256.new(body.encode())
-                signature = pkcs1_15.new(mykey).sign(h)
-
-                menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-                menu_channel = menu_connection.channel()
-                menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
-
-                menu_channel.basic_publish(
-                    exchange='Promocoes',
-                    routing_key=routing_key,
-                    body=body,
-                    properties=pika.BasicProperties(
-                    headers={
-                        "signature": signature,
-                        "vote": vote
-                    }
-                    )
-                )
-
-                menu_connection.close()
-
-                print("\nVoto registrado com sucesso!")
+        return "Voto registrado com sucesso.", 200
 
 def callback(ch, method, properties, body):
     print(f"Promoção publicada recebida. Verificando assinatura...")
@@ -253,7 +217,7 @@ def callback(ch, method, properties, body):
         
     if valid_signature:
         promocao = json.loads(body)
-        lista_promocoes[promocao['id']] = promocao
+        promocoes[promocao['id']] = promocao
 
 def consume():
     consume_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
@@ -273,14 +237,17 @@ def consume():
     consume_connection.close()
 
 if __name__ == '__main__':
-    consume_thread = threading.Thread(target=consume)
+    consume_thread = threading.Thread(
+    target=consume,
+    daemon=True
+    )
     consume_thread.start()
 
-    menu_thread = threading.Thread(target=menu)
-    menu_thread.start()
-    
-    try:
-        menu_thread.join()
-        consume_thread.join()
-    except KeyboardInterrupt:
-        exit(1)
+    app.run(
+        port=5000,
+        debug=True,
+        use_reloader=False
+    )
+
+    print("Encerrando o MS Gateway...")
+    stop_event.set()
