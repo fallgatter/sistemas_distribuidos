@@ -4,6 +4,19 @@ import pika
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
+import resend
+
+with open(".env") as f:
+    for linha in f:
+        linha = linha.strip()
+
+        if not linha or linha.startswith("#"):
+            continue
+
+        chave, valor = linha.split("=", 1)
+        os.environ[chave.strip()] = valor.strip()
+
+print(os.environ["RESEND_API_KEY"])
 
 if os.path.exists("./public_keys/mspromocao_publickey.pem"):
     with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
@@ -69,6 +82,21 @@ def callback(ch, method, properties, body):
                     promocao["title"] = f"HOT DEAL: {promocao['title']}"
                 print("HOT DEAL recebido!")
                 print(promocao['title'])
+                resend.Emails.send({
+                "from": "onboarding@resend.dev",
+                "to": "pedro.fallgatter@gmail.com",
+                "subject": f"Sua promoção {promocao['title']} entrou em destaque!",
+                "html": "<p>Parabéns! Sua promoção se tornou um HOT DEAL!s.</p>"
+                })
+                print("Email de HOT DEAL enviado via Resend.")
+            else:
+                resend.Emails.send({
+                "from": "onboarding@resend.dev",
+                "to": "pedro.fallgatter@gmail.com",
+                "subject": f"Sua promoção {promocao['title']} foi aprovada!",
+                "html": "<p>Sua promoção foi aprovada e está disponível para visualização.</p>"
+                })
+                print("Email de promoção aprovada enviado via Resend.")
 
             new_body = json.dumps(promocao)
         

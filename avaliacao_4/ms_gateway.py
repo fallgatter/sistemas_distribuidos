@@ -1,3 +1,4 @@
+from functools import partial
 import json
 import pika
 import threading
@@ -6,23 +7,11 @@ from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from flask import Flask, request
-import resend
+from queue import Queue
 
 app = Flask(__name__)
 
 pwd = b'senha'
-
-with open(".env") as f:
-    for linha in f:
-        linha = linha.strip()
-
-        if not linha or linha.startswith("#"):
-            continue
-
-        chave, valor = linha.split("=", 1)
-        os.environ[chave.strip()] = valor.strip()
-
-print(os.environ["RESEND_API_KEY"])
 
 if os.path.exists("./private_keys/msgateway_privatekey.pem"):
     with open("./private_keys/msgateway_privatekey.pem", "rb") as f:
@@ -55,37 +44,17 @@ else:
 stop_event = threading.Event()
 promocoes = {}
 promocao_id_counter = 0
-loja_id_counter = 0
-lojas = {}
-
+clientes = {}
 # espera um json do tipo:
 # ({
-#     "store_name": nome,
-#     "e-mail": email,
-# })
-@app.route('/cadastrar_loja', methods=['POST'])
-def cadastrar_loja():
-    loja = request.get_json()
-    if not loja:
-        return "Dados não presentes. Cadastro cancelado.", 400
-    if not loja["store_name"]:
-        return "Nome da loja vazio. Cadastro cancelado.", 400
-    if not loja["e-mail"]:
-        return "E-mail vazio. Cadastro cancelado.", 400
-    
-    loja["id"] = loja_id_counter
-    lojas[loja_id_counter] = loja
-    loja_id_counter += 1
-
-    return f"Loja cadastrada com sucesso.", 201
-
-# espera um json do tipo:
-# ({
+#     "store_name": store_name,
+#     "store_email": store_email,
 #     "category": category.strip(),
 #     "item_name": item_name,
 #     "price": price,
 #     "title": title,
 #     "description": description
+############     "signature": signature,
 # })
 @app.route('/cadastrar_promocao', methods=['POST'])
 def cadastrar_promocao():
@@ -93,6 +62,12 @@ def cadastrar_promocao():
 
     if not promocao:
         return "Dados não presentes. Cadastro cancelado.", 400
+
+    if not promocao["store_name"]:
+        return "Nome da loja vazio. Cadastro cancelado.", 400
+    
+    if not promocao["store_email"]:
+        return "Email da loja vazio. Cadastro cancelado.", 400
 
     with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
         categorys = f.readlines()
@@ -119,14 +94,34 @@ def cadastrar_promocao():
     
     promocao["id"] = promocao_id_counter
 
+    if os.path.exists(f"./private_keys/stores/{promocao['store_name']}.pem"):
+        with open(f"./private_keys/stores/{promocao['store_name']}.pem", "rb") as f:
+            data = f.read()
+            mykey = RSA.import_key(data, pwd)
+
+    else: 
+        mykey = RSA.generate(2048)
+        with open(f"./private_keys/stores/{promocao['store_name']}.pem", "wb") as f:
+            data = mykey.export_key(passphrase=pwd,
+                                pkcs=8,
+                                protection='PBKDF2WithHMAC-SHA512AndAES256-CBC',
+                                prot_params={'iteration_count':131072})
+            f.write(data)
+
+        with open(f"./public_keys/stores/{promocao['store_name']}.pem", "wb") as f:
+            public_key = mykey.publickey()
+            data = public_key.export_key()
+            f.write(data)
+
+    body = json.dumps(promocao)
+    h = SHA256.new(body.encode())
+    signature = pkcs1_15.new(mykey).sign(h)
+    
     menu_connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
     menu_channel = menu_connection.channel()
     menu_channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
 
     promocao_id_counter += 1
-
-    h = SHA256.new(json.dumps(promocao).encode())
-    signature = pkcs1_15.new(mykey).sign(h)
 
     menu_channel.basic_publish(
         exchange='Promocoes',
@@ -140,6 +135,7 @@ def cadastrar_promocao():
     )
 
     menu_connection.close()
+    
     return "Promoção cadastrada com sucesso.", 201
 
 @app.route('/listar_promocoes', methods=['GET'])
@@ -194,7 +190,103 @@ def votar():
 
         menu_connection.close()
 
-        return "Voto registrado com sucesso.", 200
+        return "Voto registrado com sucesso.", 201
+    
+def client_callback(client_id, ch, method, properties, body):
+    promocao = json.loads(body)
+    clientes[client_id]["queue"].put(promocao)
+    
+def client_consume(client_id, queue_name):
+    clientes[client_id]["channel"].basic_consume(queue=queue_name, on_message_callback=partial(client_callback, client_id=client_id), auto_ack=True)
+
+    while not stop_event.is_set():
+        clientes[client_id]["channel"].process_data_events(time_limit=1)
+
+# espera um json do tipo:
+# ({
+#     "client_id": client_id,
+#     "category": category.strip()
+# })
+@app.route('/registrar_interesse', methods=['POST'])
+def registrar_interesse():
+    pedido = request.get_json()
+    if not pedido:
+        return "Dados não presentes. Registro de interesse cancelado.", 400
+    if "client_id" not in pedido:
+        return "ID do cliente vazio. Registro de interesse cancelado.", 400
+    if "category" not in pedido:
+        return "Categoria vazia. Registro de interesse cancelado.", 400
+    
+    with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
+        categorys = f.readlines()
+    try:
+        category = categorys[int(pedido["category"]) - 1].strip()
+    except (ValueError, IndexError):
+        return "Categoria inválida. Registro de interesse cancelado.", 400
+    
+    queue_name = "fila_cliente" + pedido["client_id"]
+
+    if pedido["client_id"] not in clientes:
+        clientes[pedido["client_id"]] = {}
+        clientes[pedido["client_id"]]["queue"] = Queue()
+        clientes[pedido["client_id"]]["categorys"] = set()
+        clientes[pedido["client_id"]]["connection"] = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        clientes[pedido["client_id"]]["channel"] = clientes[pedido["client_id"]]["connection"].channel()
+        clientes[pedido["client_id"]]["channel"].exchange_declare(exchange='Promocoes', exchange_type='topic')
+        result = clientes[pedido["client_id"]]["channel"].queue_declare(queue_name, durable=True, exclusive=True)
+        threading.Thread(
+            target=client_consume,
+            args=(pedido["client_id"], queue_name)
+        ).start()
+
+    if category not in clientes[pedido["client_id"]]["categorys"]:
+        if category == len(categorys):
+            routing_key = "promocao.destaque"
+        else:
+            routing_key = f"promocao.categoria{pedido['category']}"
+        clientes[pedido["client_id"]]["categorys"].add(category)
+        clientes[pedido["client_id"]]["channel"].queue_bind(exchange='Promocoes', queue=queue_name, routing_key=routing_key)
+
+    return "Interesse registrado com sucesso.", 201
+
+@app.route('/remover_interesse', methods=['POST'])
+def remover_interesse():
+    pedido = request.get_json()
+    if not pedido:
+        return "Dados não presentes. Remoção de interesse cancelada.", 400
+    if "client_id" not in pedido:
+        return "ID do cliente vazio. Remoção de interesse cancelada.", 400
+    if "category" not in pedido:
+        return "Categoria vazia. Remoção de interesse cancelada.", 400
+
+    category = pedido["category"]
+
+    if category in clientes[pedido["client_id"]]["categorys"]:
+        clientes[pedido["client_id"]]["categorys"].remove(category)
+        queue_name = "fila_cliente" + pedido["client_id"]
+        clientes[pedido["client_id"]]["channel"].queue_unbind(exchange='Promocoes', queue=queue_name, routing_key=f"promocao.categoria{pedido['category']}")
+        return "Interesse removido com sucesso.", 200
+    else:
+        return "Categoria não encontrada entre os interesses do cliente. Remoção de interesse cancelada.", 400
+
+# clien_id passado no url: /sse?client_id=123
+@app.route('/sse', methods=['GET'])
+def sse():
+    def event_stream(client_id):
+        while not stop_event.is_set():
+            try:
+                promocao = clientes[client_id]["queue"].get(timeout=1)
+                yield f"data: {json.dumps(promocao)}\n\n"
+            except:
+                continue
+
+    client_id = request.args.get('client_id')
+    if not client_id:
+        return "ID do cliente não fornecido. Conexão cancelada.", 400
+    if client_id not in clientes:
+        return "ID do cliente não registrado. Conexão cancelada.", 400
+
+    return app.response_class(event_stream(client_id), mimetype='text/event-stream')
 
 def callback(ch, method, properties, body):
     print(f"Promoção publicada recebida. Verificando assinatura...")
@@ -238,8 +330,7 @@ def consume():
 
 if __name__ == '__main__':
     consume_thread = threading.Thread(
-    target=consume,
-    daemon=True
+    target=consume
     )
     consume_thread.start()
 

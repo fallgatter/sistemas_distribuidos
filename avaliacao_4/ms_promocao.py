@@ -26,14 +26,6 @@ else:
         data = public_key.export_key()
         f.write(data)
 
-if os.path.exists("./public_keys/msgateway_publickey.pem"):
-    with open("./public_keys/msgateway_publickey.pem", "rb") as f:
-        data = f.read()
-        gateway_pub_key = RSA.import_key(data)
-else:
-    print("Public Key do MS Gateway não encontrada. Execute o ms_gateway.py primeiro.")
-    exit(1)
-
 def callback(ch, method, properties, body):
     print("Promoção recebida. Verificando assinatura...")
     
@@ -41,11 +33,21 @@ def callback(ch, method, properties, body):
     if signature is None:
         print("Evento sem assinatura.")
         return
+    
+    promocao = json.loads(body)
+
+    if os.path.exists(f"./public_keys/stores/{promocao['store_name']}.pem"):
+        with open(f"./public_keys/stores/{promocao['store_name']}.pem", "rb") as f:
+            data = f.read()
+            store_key = RSA.import_key(data, pwd)
+    else:
+        print("Public Key da loja não encontrada.")
+        exit(1)
      
     h = SHA256.new(body)
 
     try:
-        pkcs1_15.new(gateway_pub_key).verify(h, signature)
+        pkcs1_15.new(store_key).verify(h, signature)
         print("Assinatura válida.")
 
     except (ValueError, TypeError):
