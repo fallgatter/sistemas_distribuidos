@@ -7,9 +7,11 @@ from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
 from flask import Flask, request
+from flask_cors import CORS
 from queue import Queue
 
 app = Flask(__name__)
+CORS(app)
 
 pwd = b'senha'
 
@@ -58,6 +60,7 @@ clientes = {}
 # })
 @app.route('/cadastrar_promocao', methods=['POST'])
 def cadastrar_promocao():
+    global promocao_id_counter
     promocao = request.get_json()
 
     if not promocao:
@@ -192,19 +195,25 @@ def votar():
 
         return "Voto registrado com sucesso.", 201
     
-def client_callback(client_id, ch, method, properties, body):
+def client_callback(ch, method, properties, body, client_id):
     promocao = json.loads(body)
     clientes[client_id]["queue"].put(promocao)
+
+    print(f"Promoção recebida pelo cliente {client_id}: {promocao['id']}")
     
 def client_consume(client_id, queue_name):
-    clientes[client_id]["channel"].basic_consume(queue=queue_name, on_message_callback=partial(client_callback, client_id=client_id), auto_ack=True)
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    channel = connection.channel()
+    channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
+    channel.basic_consume(queue=queue_name, on_message_callback=partial(client_callback, client_id=client_id), auto_ack=True)
 
     while not stop_event.is_set():
-        clientes[client_id]["channel"].process_data_events(time_limit=1)
+        connection.process_data_events(time_limit=1)
 
 # espera um json do tipo:
 # ({
-#     "client_id": client_id,
+#     "client_id": client_id string,
 #     "category": category.strip()
 # })
 @app.route('/registrar_interesse', methods=['POST'])
@@ -220,34 +229,45 @@ def registrar_interesse():
     with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
         categorys = f.readlines()
     try:
-        category = categorys[int(pedido["category"]) - 1].strip()
+        if pedido["category"] == len(categorys) + 1:
+            category = "Destaque"
+        else:
+            category = categorys[int(pedido["category"]) - 1].strip()
     except (ValueError, IndexError):
         return "Categoria inválida. Registro de interesse cancelado.", 400
     
     queue_name = "fila_cliente" + pedido["client_id"]
 
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    channel = connection.channel()
+    channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
     if pedido["client_id"] not in clientes:
         clientes[pedido["client_id"]] = {}
         clientes[pedido["client_id"]]["queue"] = Queue()
         clientes[pedido["client_id"]]["categorys"] = set()
-        clientes[pedido["client_id"]]["connection"] = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-        clientes[pedido["client_id"]]["channel"] = clientes[pedido["client_id"]]["connection"].channel()
-        clientes[pedido["client_id"]]["channel"].exchange_declare(exchange='Promocoes', exchange_type='topic')
-        result = clientes[pedido["client_id"]]["channel"].queue_declare(queue_name, durable=True, exclusive=True)
+        result = channel.queue_declare(queue_name)
         threading.Thread(
             target=client_consume,
             args=(pedido["client_id"], queue_name)
         ).start()
 
     if category not in clientes[pedido["client_id"]]["categorys"]:
-        if category == len(categorys):
+        if category == "Destaque":
             routing_key = "promocao.destaque"
         else:
-            routing_key = f"promocao.categoria{pedido['category']}"
+            routing_key = f"promocao.categoria{int(pedido['category']) - 1}"
         clientes[pedido["client_id"]]["categorys"].add(category)
-        clientes[pedido["client_id"]]["channel"].queue_bind(exchange='Promocoes', queue=queue_name, routing_key=routing_key)
 
-    return "Interesse registrado com sucesso.", 201
+        channel.queue_bind(exchange='Promocoes', queue=queue_name, routing_key=routing_key)
+
+        print(f"Cliente {pedido['client_id']} registrado para receber notificações de promoções da categoria {category}.")
+
+        return "Interesse registrado com sucesso.", 201
+    
+    else:
+        print(f"Cliente {pedido['client_id']} já registrado para receber notificações de promoções da categoria {category}.")
+        return "Interesse já interessado nessa categoria.", 200
 
 @app.route('/remover_interesse', methods=['POST'])
 def remover_interesse():
@@ -256,17 +276,37 @@ def remover_interesse():
         return "Dados não presentes. Remoção de interesse cancelada.", 400
     if "client_id" not in pedido:
         return "ID do cliente vazio. Remoção de interesse cancelada.", 400
-    if "category" not in pedido:
-        return "Categoria vazia. Remoção de interesse cancelada.", 400
+    with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
+        categorys = f.readlines()
+    try:
+        if pedido["category"] == len(categorys) + 1:
+            category = "Destaque"
+        else:
+            category = categorys[int(pedido["category"]) - 1].strip()
 
-    category = pedido["category"]
+    except (ValueError, IndexError):
+        return "Categoria inválida. Registro de interesse cancelado.", 400
 
     if category in clientes[pedido["client_id"]]["categorys"]:
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        channel = connection.channel()
+        channel.exchange_declare(exchange='Promocoes', exchange_type='topic')
+
         clientes[pedido["client_id"]]["categorys"].remove(category)
+
         queue_name = "fila_cliente" + pedido["client_id"]
-        clientes[pedido["client_id"]]["channel"].queue_unbind(exchange='Promocoes', queue=queue_name, routing_key=f"promocao.categoria{pedido['category']}")
+        if category == "Destaque":
+            routing_key = "promocao.destaque"
+        else:
+            routing_key = f"promocao.categoria{int(pedido['category']) - 1}"
+
+        channel.queue_unbind(exchange='Promocoes', queue=queue_name, routing_key=routing_key)
+        
+        print(f"Cliente {pedido['client_id']} removido das notificações de promoções da categoria {category}.")
+        
         return "Interesse removido com sucesso.", 200
     else:
+        print(f"Cliente {pedido['client_id']} não registrado para receber notificações de promoções da categoria {category}.")
         return "Categoria não encontrada entre os interesses do cliente. Remoção de interesse cancelada.", 400
 
 # clien_id passado no url: /sse?client_id=123
@@ -276,6 +316,7 @@ def sse():
         while not stop_event.is_set():
             try:
                 promocao = clientes[client_id]["queue"].get(timeout=1)
+                print(f"Enviando promoção {promocao['id']} para o cliente {client_id}...")
                 yield f"data: {json.dumps(promocao)}\n\n"
             except:
                 continue
@@ -341,4 +382,13 @@ if __name__ == '__main__':
     )
 
     print("Encerrando o MS Gateway...")
+
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost') )
+    channel = connection.channel()
+
+    for client_id in clientes:
+        channel.queue_delete(
+            queue=f"fila_cliente{client_id}"
+        )
+
     stop_event.set()

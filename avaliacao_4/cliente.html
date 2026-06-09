@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="cStyle.css">
+    <title>Cliente</title>
+</head>
+<body>
+    <header>
+        <h1>Área do Cliente</h1>
+    </header>
+
+    <div class="main-container">
+
+        <div class="coluna-esquerda">
+            <h2>Identificação</h2>
+            <div>
+                <label for="client_id">ID do Cliente:</label>
+                <input type="text" id="client_id" name="client_id" required>
+            </div>
+
+            <div id="interest-register-form">
+                <h2>Registrar Interesse</h2>
+                <form id="register-interest-form">
+                    <label for="category-name-interest">Selecione a Categoria:</label>
+                    <select id="category-name-interest" name="category-name-interest" required>
+                        <option value="">--Selecione--</option>
+                    </select>
+                    <button type="submit" style="margin-top: 10px;">Registrar Interesse</button>
+                </form>
+            </div>
+
+            <div id="interest-cancel-form">
+                <h2>Cancelar Interesse</h2>
+                <form id="cancel-interest-form">
+                    <label for="category-name-cancel">Selecione a Categoria:</label>
+                    <select id="category-name-cancel" name="category-name-cancel" required>
+                        <option value="">--Selecione--</option>
+                    </select>
+                    <button type="submit" style="margin-top: 10px;">Cancelar Interesse</button>
+                </form>
+            </div>
+        
+        </div>
+
+    </div>
+
+    <div class="coluna-centro">
+        <h2>Promoções Gerais</h2>
+        <button type="button" onclick="loadPromocoes()">Atualizar Promoções Publicadas</button>
+        <div id="promotions-published">
+            <p>Clique para atualizar</p>
+        </div>
+
+    </div>
+    
+    <div class="coluna-direita">
+        <h2>Painel de Notificações</h2>
+        <div id="notifications">
+            <p>Aguardando novas notificações...</p>
+        </div>
+    </div>
+    
+    <script>
+        const GATEWAY_URL = "http://localhost:5000";
+        let eventSource = null;
+
+        //Carregar categorias
+        async function loadCategories(){
+            try {
+                const response = await fetch('promocao_categorias.txt');
+                if (!response.ok) { throw new Error('Erro ao carregar categorias'); }
+
+                const text = await response.text();
+
+                const categories = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+                const categoryRegister = document.getElementById('category-name-interest');
+                const categoryCancel = document.getElementById('category-name-cancel');
+
+                categories.forEach((category, index) => {
+                    const categoryIndex = index + 1;
+
+                    const optionRegister = document.createElement('option');
+                    optionRegister.value = categoryIndex;
+                    optionRegister.textContent = category;
+                    categoryRegister.appendChild(optionRegister);
+
+                    const optionCancel = document.createElement('option');
+                    optionCancel.value = categoryIndex;
+                    optionCancel.textContent = category;
+                    categoryCancel.appendChild(optionCancel);
+                });
+            }
+
+            catch (error) {
+                console.error("Erro: ao processar categorias", error);
+            }
+        }
+
+        async function loadPromocoes() {
+            try {
+                const response = await fetch(`${GATEWAY_URL}/listar_promocoes`);
+                const container = document.getElementById('promotions-published');
+                container.innerHTML = "";
+
+                if (response.status === 200){
+                    const textData = await response.text();
+
+                    if (textData === "Nenhuma promoção disponível.") {
+                        container.innerHTML = `<p style="padding: 5px;">${textData}</p>`;
+                        return;
+                    }
+
+                    const promotions = JSON.parse(textData);
+
+                    for (let id in promotions) {
+                        const promo = promotions[id];
+                        const promoItem = document.createElement('div');
+                        promoItem.style.border = "1px solid gray";
+                        promoItem.style.padding = "5px";
+                        promoItem.style.margin = "5px";
+                        promoItem.innerHTML = `
+                            ${promo.title} - ${promo.item_name}<br>
+                            Preço: R$ ${promo.price} | Categoria: ${promo.category}<br>
+                            Descrição: ${promo.description}<br>
+                            <button class="btn-vote" onclick="vote(${promo.id}, 1)">Gostei</button>
+                            <button class="btn-vote"onclick="vote(${promo.id}, 0)">Não Gostei</button>
+                        `;
+                        container.appendChild(promoItem);
+                    }
+                }
+            }
+
+            catch (error) {
+                console.error("Erro: ao listar promoções publicadas", error);
+            }
+        }
+
+        async function vote (idPromotion , voteValue){
+            try {
+                const response = await fetch(`${GATEWAY_URL}/votar`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: parseInt(idPromotion), voto: voteValue })
+                });
+
+                const text = await response.text();
+                alert(text);
+            }
+
+            catch (error) {
+                console.error('Erro ao votar na promoção:', error);
+            }
+        }
+
+        //Enviar a categoria de interesse
+        document.getElementById('register-interest-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const clientId = document.getElementById('client_id').value;
+            const categoryIndex = document.getElementById('category-name-interest').value;
+
+            if(!clientId) { alert("Informe o ID do cliente primeiro."); return; }
+
+            try {
+                const response = await fetch(`${GATEWAY_URL}/registrar_interesse`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ client_id: clientId, category: categoryIndex})
+                });
+
+                const result = await response.text();
+                alert(result);
+
+                console.log('Interesse registrado com sucesso:', result);
+
+                if ((response.status === 201 || response.ok) && eventSource === null){
+                    conexaoCliente(clientId)
+                }
+            }
+
+            catch (error) {
+                console.error('Erro ao registrar interesse:', error);
+            }
+        });
+
+        //Cancelar interesse
+        document.getElementById('cancel-interest-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const clientId = document.getElementById('client_id').value;
+            const categoryIndex = document.getElementById('category-name-cancel').value;
+
+            if(!clientId) { alert("Informe o ID do cliente primeiro."); return; }
+
+            try {
+                const response = await fetch(`${GATEWAY_URL}/remover_interesse`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ client_id: clientId, category: categoryIndex })
+                });
+
+                const result = await response.text();
+                alert(result);
+            }
+
+            catch (error) {
+                console.error('Erro ao cancelar interesse:', error);
+            }
+        });
+
+        //conexao do cliente sse
+        function conexaoCliente(clientId) {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            const painel = document.getElementById('notifications');
+
+            eventSource = new EventSource(`${GATEWAY_URL}/sse?client_id=${clientId}`);
+
+            eventSource.onmessage = function(event) {
+               const promocao = JSON.parse(event.data);
+                
+                const item = document.createElement('div');
+                item.className = 'notificacao-item';
+
+                item.style.backgroundColor = "#0000004a";
+                item.style.margin = "5px";
+                item.style.padding = "8px";
+                item.style.border = "1px solid #b3e6b3";
+                item.style.borderRadius = "4px";
+                item.innerHTML = `
+                    Título: ${promocao.title} - Item: ${promocao.item_name}<br>
+                    Preço: R$ ${promocao.price} | Categoria: ${promocao.category}<br>
+                    <small>Descrição: ${promocao.description}</small>
+                `;
+                if(painel.innerText.includes("Aguardando") || painel.innerText.includes("Conectado!")) {
+                    painel.innerHTML = "";
+                }
+                // Adiciona no topo da lista de notificações
+                painel.insertBefore(item, painel.firstChild);
+            };
+
+            eventSource.onerror = function(err) {
+                console.log("Fluxo SSE instável ou aguardando dados...");
+            };
+        }
+
+        window.addEventListener('load', () => {
+            loadCategories();
+            loadPromocoes();
+        });
+    </script>
+</body>
+</html>

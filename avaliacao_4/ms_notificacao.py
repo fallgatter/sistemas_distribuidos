@@ -4,19 +4,21 @@ import pika
 from Crypto.Signature import pkcs1_15
 from Crypto.Hash import SHA256
 from Crypto.PublicKey import RSA
-import resend
+#import resend
 
-with open(".env") as f:
-    for linha in f:
-        linha = linha.strip()
+#with open(".env") as f:
+ #   for linha in f:
+  #      linha = linha.strip()
 
-        if not linha or linha.startswith("#"):
-            continue
+   #     if not linha or linha.startswith("#"):
+    #        continue
 
-        chave, valor = linha.split("=", 1)
-        os.environ[chave.strip()] = valor.strip()
+      #  chave, valor = linha.split("=", 1)
+     #   os.environ[chave.strip()] = valor.strip()
 
-print(os.environ["RESEND_API_KEY"])
+#print(os.environ["RESEND_API_KEY"])
+
+#resend.api_key = os.environ["RESEND_API_KEY"]
 
 if os.path.exists("./public_keys/mspromocao_publickey.pem"):
     with open("./public_keys/mspromocao_publickey.pem", "rb") as f:
@@ -35,7 +37,8 @@ else:
     exit(1)
 
 with open('promocao_categorias.txt', 'r', encoding='utf-8') as f:
-    lista_categorias = f.readlines()
+    #lista_categorias = f.readlines()
+    lista_categorias = [linha.strip() for linha in f.readlines() if linha.strip()]
 
 def callback(ch, method, properties, body):
     print("Promoção recebida. Verificando assinatura...")
@@ -66,11 +69,11 @@ def callback(ch, method, properties, body):
 
     try:
         promocao = json.loads(body)
-        categoria = promocao.get("category")
+        categoria = str(promocao.get("category")).strip()
         indice=-1
 
         for i, linha in enumerate(lista_categorias):
-            if linha.strip() == categoria:
+            if linha == categoria:
                 indice = i
                 break
 
@@ -82,20 +85,20 @@ def callback(ch, method, properties, body):
                     promocao["title"] = f"HOT DEAL: {promocao['title']}"
                 print("HOT DEAL recebido!")
                 print(promocao['title'])
-                resend.Emails.send({
-                "from": "onboarding@resend.dev",
-                "to": "pedro.fallgatter@gmail.com",
-                "subject": f"Sua promoção {promocao['title']} entrou em destaque!",
-                "html": "<p>Parabéns! Sua promoção se tornou um HOT DEAL!s.</p>"
-                })
-                print("Email de HOT DEAL enviado via Resend.")
+               # resend.Emails.send({
+               # "from": "onboarding@resend.dev",
+                #"to": "pedro.fallgatter@gmail.com",
+                #"subject": f"Sua promoção {promocao['title']} entrou em destaque!",
+                #"html": "<p>Parabéns! Sua promoção se tornou um HOT DEAL!s.</p>"
+                #})
+                #print("Email de HOT DEAL enviado via Resend.")
             else:
-                resend.Emails.send({
-                "from": "onboarding@resend.dev",
-                "to": "pedro.fallgatter@gmail.com",
-                "subject": f"Sua promoção {promocao['title']} foi aprovada!",
-                "html": "<p>Sua promoção foi aprovada e está disponível para visualização.</p>"
-                })
+                #resend.Emails.send({
+                #"from": "onboarding@resend.dev",
+                #"to": "pedro.fallgatter@gmail.com",
+                #"subject": f"Sua promoção {promocao['title']} foi aprovada!",
+                #"html": "<p>Sua promoção foi aprovada e está disponível para visualização.</p>"
+                #})
                 print("Email de promoção aprovada enviado via Resend.")
 
             new_body = json.dumps(promocao)
