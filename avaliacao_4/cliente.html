@@ -74,24 +74,18 @@
 
                 const text = await response.text();
 
-                const categories = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+                const categories = text.split('\n');
 
                 const categoryRegister = document.getElementById('category-name-interest');
                 const categoryCancel = document.getElementById('category-name-cancel');
 
-                categories.forEach((category, index) => {
-                    const categoryIndex = index + 1;
-
-                    const optionRegister = document.createElement('option');
-                    optionRegister.value = categoryIndex;
-                    optionRegister.textContent = category;
-                    categoryRegister.appendChild(optionRegister);
-
-                    const optionCancel = document.createElement('option');
-                    optionCancel.value = categoryIndex;
-                    optionCancel.textContent = category;
-                    categoryCancel.appendChild(optionCancel);
-                });
+                for(let i = 0; i < categories.length; i++) { 
+                    let categoria = categories[i].trim(); 
+                    if(categoria != "") { 
+                        categoryRegister.innerHTML += ` <option value="${i + 1}"> ${categoria} </option> `; 
+                        categoryCancel.innerHTML += ` <option value="${i + 1}"> ${categoria} </option> `; 
+                    } 
+                }
             }
 
             catch (error) {
@@ -117,18 +111,17 @@
 
                     for (let id in promotions) {
                         const promo = promotions[id];
-                        const promoItem = document.createElement('div');
-                        promoItem.style.border = "1px solid gray";
-                        promoItem.style.padding = "5px";
-                        promoItem.style.margin = "5px";
-                        promoItem.innerHTML = `
-                            ${promo.title} - ${promo.item_name}<br>
-                            Preço: R$ ${promo.price} | Categoria: ${promo.category}<br>
-                            Descrição: ${promo.description}<br>
-                            <button class="btn-vote" onclick="vote(${promo.id}, 1)">Gostei</button>
-                            <button class="btn-vote"onclick="vote(${promo.id}, 0)">Não Gostei</button>
-                        `;
-                        container.appendChild(promoItem);
+                        container.innerHTML += 
+                        ` <div 
+                            style="border:1px solid gray; 
+                            padding:5px; 
+                            margin:5px;
+                            "> ${promo.title} - ${promo.item_name}<br> 
+                            Preço: R$ ${promo.price} | Categoria: ${promo.category}<br> 
+                            Descrição: ${promo.description}<br> 
+                            <button class="btn-vote" onclick="vote(${promo.id},1)"> Gostei </button> 
+                            <button class="btn-vote" onclick="vote(${promo.id},0)"> Não Gostei </button> 
+                        </div> `;
                     }
                 }
             }
@@ -162,7 +155,10 @@
             const clientId = document.getElementById('client_id').value;
             const categoryIndex = document.getElementById('category-name-interest').value;
 
-            if(!clientId) { alert("Informe o ID do cliente primeiro."); return; }
+            if(!clientId) { 
+                alert("Informe o ID do cliente primeiro."); 
+                return; 
+            }
 
             try {
                 const response = await fetch(`${GATEWAY_URL}/registrar_interesse`, {
@@ -174,10 +170,8 @@
                 const result = await response.text();
                 alert(result);
 
-                console.log('Interesse registrado com sucesso:', result);
-
                 if ((response.status === 201 || response.ok) && eventSource === null){
-                    conexaoCliente(clientId)
+                    conexaoCliente(clientId);
                 }
             }
 
@@ -193,7 +187,10 @@
             const clientId = document.getElementById('client_id').value;
             const categoryIndex = document.getElementById('category-name-cancel').value;
 
-            if(!clientId) { alert("Informe o ID do cliente primeiro."); return; }
+            if(!clientId) { 
+                alert("Informe o ID do cliente primeiro."); 
+                return; 
+            }
 
             try {
                 const response = await fetch(`${GATEWAY_URL}/remover_interesse`, {
@@ -240,7 +237,7 @@
                 if(painel.innerText.includes("Aguardando") || painel.innerText.includes("Conectado!")) {
                     painel.innerHTML = "";
                 }
-                // Adiciona no topo da lista de notificações
+
                 painel.insertBefore(item, painel.firstChild);
             };
 
