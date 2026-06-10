@@ -66,7 +66,6 @@
         const GATEWAY_URL = "http://localhost:5000";
         let eventSource = null;
 
-        //Carregar categorias
         async function loadCategories(){
             try {
                 const response = await fetch('promocao_categorias.txt');
@@ -148,7 +147,6 @@
             }
         }
 
-        //Enviar a categoria de interesse
         document.getElementById('register-interest-form').addEventListener('submit', async (event) => {
             event.preventDefault();
 
@@ -180,7 +178,6 @@
             }
         });
 
-        //Cancelar interesse
         document.getElementById('cancel-interest-form').addEventListener('submit', async (event) => {
             event.preventDefault();
 
@@ -208,7 +205,6 @@
             }
         });
 
-        //conexao do cliente sse
         function conexaoCliente(clientId) {
             if (eventSource) {
                 eventSource.close();
