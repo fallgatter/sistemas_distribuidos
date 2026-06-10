@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="lStyle.css">
+    <title>Loja</title>
+</head>
+<body>
+    <header>
+        <h1>Área da Loja</h1>
+    </header>
+
+    <div class="loja-container">
+        <h2>Cadastro de Promoção</h2>
+
+        <form id="cadastro-promocao-form">
+            <div class="form-group"> 
+                <label for = "store_name">Nome da Loja:</label>
+                <input type="text" id="store_name" name="store_name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="store_email">Email da Loja:</label>
+                <input type="email" id="store_email" name="store_email" required>
+            </div>
+
+            <div class="form-group"> 
+                <label for="category">Categoria do Produto:</label>
+                <select id="category" name="category" required>
+                    <option value="">--Selecione--</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="item_name">Nome do Produto:</label>
+                <input type="text" id="item_name" name="item_name" required>
+            </div>
+
+            <div class="form-group">
+                <label for="price">Preço:</label>
+                <input type="number" id="price" name="price" required>
+            </div>
+
+            <div class="form-group">
+                <label for="title">Título da Promoção:</label>
+                <input type="text" id="title" name="title" required>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Descrição Complementar:</label>
+                <input type="text" id="description" name="description" required>
+            </div>
+
+            <button type="submit">Cadastrar Promoção</button>
+
+        </form>
+    
+    </div>
+
+    <script>
+        const GATEWAY_URL = "http://localhost:5000";
+
+        async function loadCategories() {
+            try {
+                const response = await fetch('promocao_categorias.txt');
+                if (!response.ok) { throw new Error('Erro ao carregar o arquivo de categorias'); }
+
+                const text = await response.text();
+                const categories = text.split('\n');
+
+                const categorySelect = document.getElementById('category');
+
+                for(let i = 0; i < categories.length; i++) { 
+                    let categoria = categories[i].trim(); 
+                    if(categoria != "") { 
+                        categorySelect.innerHTML += ` <option value="${i + 1}"> ${categoria} </option> `; 
+                    } 
+                }
+
+            } catch (error) {
+                console.error("Erro ao processar as categorias da loja:", error);
+            }
+        }
+
+        document.getElementById('cadastro-promocao-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            try {
+                const response = await fetch(`${GATEWAY_URL}/cadastrar_promocao`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        store_name: document.getElementById('store_name').value,
+                        store_email: document.getElementById('store_email').value,
+                        category: document.getElementById('category').value,
+                        item_name: document.getElementById('item_name').value,
+                        price: parseFloat(document.getElementById('price').value),
+                        title: document.getElementById('title').value,
+                        description: document.getElementById('description').value
+                    })
+                });
+
+                const result = await response.text();
+                alert(result);
+
+                if(response.status === 201 || response.ok){
+                    document.getElementById('cadastro-promocao-form').reset();
+                }
+
+            } catch (error) {
+                console.error("Erro ao cadastrar promoção:", error);
+                alert("Erro ao cadastrar promoção.");
+            }
+        });
+
+        window.addEventListener('load', loadCategories);
+    </script>
+</body>
+</html>

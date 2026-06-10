@@ -1,0 +1,41 @@
+*{
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body{
+    background-image: url("planodefundo.jpg");
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+    color: #000000b8;
+    min-height: 100vh;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+header {
+    width: 100%;
+    mix-blend-mode: color-dodge;
+    color: rgb(238, 26, 26);
+    padding: 6%;
+    text-align: center;
+    font-size: 3.0em;
+}
+
+button{
+    width: 100%;
+    padding: 12px 20px;
+    border-radius: 40px; 
+    border: none;
+    background-color: #ffffffa8;
+    color: #474747;
+    font-size: 23px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-top: 10px;
+}

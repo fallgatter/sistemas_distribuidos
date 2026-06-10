@@ -1,0 +1,100 @@
+* {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-image: url("planodefundo.jpg");
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+    color: #000000b8;
+    min-height: 100vh;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+header {
+    width: 100%;
+    mix-blend-mode: color-dodge;
+    color: rgb(238, 26, 26);
+    padding: 3%;
+    text-align: center;
+    font-size: 1.8em;
+}
+
+.loja-container {
+    width: 100%;
+    max-width: 800px; 
+    background-color: rgba(255, 255, 255, 0.08); 
+    border: 1px solid rgba(255, 255, 255, 0.2); 
+    border-radius: 15px;
+    padding: 30px;
+    margin: 20px auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px; 
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); 
+
+    h2{
+        font-size: 1.8em;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding-bottom: 8px;
+        margin-bottom: 5px;
+        text-align: center; 
+    }
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+label {
+    font-size: 1.2em;
+    font-weight: 500;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.222);
+    background-color: #0000004a;
+    color: rgba(255, 255, 255, 0.963);
+    font-size: 15px;
+    outline: none;
+}
+
+input:focus, select:focus {
+    border-color: rgba(255, 255, 255, 0.512);
+}
+
+button[type="submit"] {
+    width: 100%;
+    padding: 12px 20px;
+    border-radius: 40px; 
+    border: none;
+    background-color: #ffffffa8;
+    color: #474747;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-top: 10px;
+}
+
+button[type="submit"]:hover {
+    background-color: #ffffff;
+}
+
+button[type="submit"]:active {
+    transform: scale(0.98); 
+}
