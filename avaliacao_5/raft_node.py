@@ -176,8 +176,7 @@ class Node:
                 self.state = 'leader'
                 print(f"Node {self.node_id} became the leader for term {self.current_term}")
                 
-                self.valid_friends = self.friends.copy()
-                for nid in self.friends:
+                for nid in self.valid_friends:
                     self.nextIndex[nid] = len(self.log)
                     self.matchIndex[nid] = -1
 
@@ -204,7 +203,7 @@ class Node:
                     prev_log_term = 0
                 
                 entries_to_send = self.log[self.nextIndex[friend_id]:]
-                if entries_to_send and friend_id in self.valid_friends:
+                if entries_to_send:
                     print(f"Sending log entries to {friend_id}: {entries_to_send}")
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
@@ -330,8 +329,8 @@ class Node:
     def handle_log_consistency(self, friend_id, friend_address, conflict_index, conflict_term):
         while self.state == 'leader':
             print(conflict_index, conflict_term)
-            self.nextIndex[friend_id] = max(0, conflict_index - 1)          # era conflict_index - 1
-            prev_log_index = self.nextIndex[friend_id] - 1              # agora sim é o índice anterior de verdade
+            self.nextIndex[friend_id] = max(0, conflict_index)          
+            prev_log_index = self.nextIndex[friend_id] - 1              
             prev_log_term = self.log[prev_log_index]['term'] if prev_log_index >= 0 else 0
 
             entries_missing = self.log[self.nextIndex[friend_id]:]     

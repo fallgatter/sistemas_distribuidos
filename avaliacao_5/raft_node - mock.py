@@ -46,9 +46,9 @@ class Node:
         self.state = state
         self.current_term = current_term
         self.voted_for = voted_for
-        self.log = [{'term': 1, 'command': 'x=1'}, {'term': 2, 'command': 'x=1'}, {'term': 2, 'command': 'z=1'}]
-        self.commit_index = 0
-        self.last_applied = 0
+        self.log = [{'term': 1, 'command': 'x=1'}, {'term': 2, 'command': 'x=2'}, {'term': 2, 'command': 'x=3'}] 
+        self.commit_index = 2
+        self.last_applied = 2
         self.friends = friends if friends is not None else {}
         self.valid_friends = friends if friends is not None else {}
         self.daemon = daemon
@@ -57,8 +57,8 @@ class Node:
         self.voted_for = None
         self.votes = 0
         self.received_heartbeat = False
-        self.nextIndex = {0}
-        self.matchIndex = {0}
+        self.nextIndex = {2}
+        self.matchIndex = {2}
         self.leader_address_host = None
         self.leader_address_port = None
 
