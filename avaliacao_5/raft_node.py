@@ -330,7 +330,7 @@ class Node:
     def handle_log_consistency(self, friend_id, friend_address, conflict_index, conflict_term):
         while self.state == 'leader':
             print(conflict_index, conflict_term)
-            self.nextIndex[friend_id] = max(0, conflict_index)          # era conflict_index - 1
+            self.nextIndex[friend_id] = max(0, conflict_index - 1)          # era conflict_index - 1
             prev_log_index = self.nextIndex[friend_id] - 1              # agora sim é o índice anterior de verdade
             prev_log_term = self.log[prev_log_index]['term'] if prev_log_index >= 0 else 0
 
