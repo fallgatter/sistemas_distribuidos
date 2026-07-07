@@ -4,6 +4,7 @@ import time
 import threading
 import random
 import grpc
+import os
 from concurrent import futures
 
 import raft_pb2
@@ -87,11 +88,40 @@ class Node:
         self.client_server.add_insecure_port(f'{self.host}:{self.port - 1000}')
         self.client_server.start()
 
+        os.makedirs("nodes_info", exist_ok=True)
+        self.state_file = f"nodes_info/{self.node_id}.json"
+        self.load_state()
+
         print(f"Node {self.node_id} is ready. Object address = {self.host}:{self.port}")
 
         time.sleep(10)
 
         self.election_timer()
+
+    def save_state(self):
+        data = {
+            "current_term": self.current_term,
+            "voted_for": self.voted_for,
+            "commit_index": self.commit_index,
+            "last_applied": self.last_applied,
+            "log": self.log
+        }
+        with open(self.state_file, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+
+    def load_state(self):
+        if not os.path.exists(self.state_file):
+            return
+            
+        with open(self.state_file, 'r') as file:
+            data = json.load(file)
+        self.current_term = data.get("current_term", 0)
+        self.voted_for = data.get("voted_for", None)
+        self.commit_index = data.get("commit_index", -1)
+        self.last_applied = data.get("last_applied", -1)
+        self.log = data.get("log", [])
+
+        print(f"{self.node_id} recovered persisted state")
 
     def request_vote(self, candidate_id, term, last_log_index, last_log_term):
         if candidate_id not in self.valid_friends and candidate_id != self.node_id:
@@ -104,6 +134,7 @@ class Node:
             self.current_term = term
             self.state = 'follower'
             self.voted_for = None
+            self.save_state()
 
         if term < self.current_term:
             return False
@@ -116,6 +147,7 @@ class Node:
         if (self.voted_for is None or self.voted_for == candidate_id) and (last_log_term > mylast_log_term or (last_log_term == mylast_log_term and last_log_index >= len(self.log) - 1)):
             self.voted_for = candidate_id
             self.received_heartbeat = True
+            self.save_state()
             print(f"{self.node_id} voted for {candidate_id} in term {term}")
             return True
 
@@ -141,6 +173,7 @@ class Node:
         self.current_term += 1
         self.votes = 1
         self.voted_for = self.node_id
+        self.save_state()
 
         if self.log:
             mylast_log_term = self.log[-1]['term']
@@ -175,7 +208,8 @@ class Node:
             if self.votes > (CLUSTER_SIZE + 1) // 2:
                 self.state = 'leader'
                 print(f"Node {self.node_id} became the leader for term {self.current_term}")
-                
+                self.save_state()
+
                 for nid in self.valid_friends:
                     self.nextIndex[nid] = len(self.log)
                     self.matchIndex[nid] = -1
@@ -256,6 +290,7 @@ class Node:
                 while conflict_index > 0 and self.log[conflict_index - 1]['term'] == conflict_term:
                     conflict_index -= 1
                 self.log = self.log[:conflict_index]
+                self.save_state()
                 return False, conflict_index, conflict_term
             
         if not entries:
@@ -265,6 +300,8 @@ class Node:
         
         else:
             self.log = self.log[:prev_log_index + 1] + entries
+            self.save_state()
+            print("Entry replicated.")
 
         if leader_commit > self.commit_index:
             self.commit_entries(min(leader_commit, len(self.log) - 1))
@@ -297,6 +334,7 @@ class Node:
                     self.matchIndex[friend_id] = prev_log_index + 1
                     self.nextIndex[friend_id] = self.matchIndex[friend_id] + 1
                     acks += 1
+                    print(f"{friend_id} replicated log entry: {entry}")
                 else:
                     threading.Thread(target=self.handle_log_consistency, args=(friend_id, friend_address, response.conflict_index, response.conflict_term), daemon=True).start()
             
@@ -306,7 +344,6 @@ class Node:
         total_nodes = CLUSTER_SIZE + 1
         
         if acks > total_nodes // 2:            
-            print(f"{self.node_id} committed log entry: {entry}")
             self.commit_entries(prev_log_index + 1)
             
             for friend_id, friend_address in self.friends.items():
@@ -361,7 +398,9 @@ class Node:
             while (self.last_applied < self.commit_index) and (self.last_applied + 1 < len(self.log)):
                 self.last_applied += 1
                 entry = self.log[self.last_applied]
-                print(f"{self.node_id} applied log entry: {entry}")
+                print(f"{self.node_id} committed log entry: {entry}")
+            
+            self.save_state()
 
             print(f"{self.node_id} updated commit index to {commit_index}")
 
@@ -372,6 +411,7 @@ class Node:
         entry = {'term': self.current_term, 'command': f'{key}={value}'}
         
         self.log.append(entry)
+        self.save_state()
         if self.replicate_log_entries(entry): 
             return "Command committed", entry['command']
         else:

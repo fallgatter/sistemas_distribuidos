@@ -1,0 +1,40 @@
+{
+    "current_term": 2,
+    "voted_for": "node2",
+    "commit_index": 7,
+    "last_applied": 7,
+    "log": [
+        {
+            "term": 1,
+            "command": "x=20"
+        },
+        {
+            "term": 1,
+            "command": "y=30"
+        },
+        {
+            "term": 1,
+            "command": "t=488"
+        },
+        {
+            "term": 1,
+            "command": "m=9999"
+        },
+        {
+            "term": 1,
+            "command": "p=152"
+        },
+        {
+            "term": 1,
+            "command": "r=0909"
+        },
+        {
+            "term": 1,
+            "command": "r=0909"
+        },
+        {
+            "term": 2,
+            "command": "l=2323"
+        }
+    ]
+}

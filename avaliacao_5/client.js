@@ -58,8 +58,9 @@ function put(key, value) {
     sendPut(leader_address);
 }
 
-function get(key) {
-    const stub = new raft.Client(leader_address, grpc.credentials.createInsecure());
+function get(node,key) {
+    const address = `${nodes_settings[node].host}:${nodes_settings[node].port - 1000}`;
+    const stub = new raft.Client(address, grpc.credentials.createInsecure());
     const request = {key};
 
     stub.client_get(request, (error, response) => { 
@@ -71,7 +72,7 @@ function get(key) {
             return;
         }
         else{
-            console.log(`Get request status: ${response.status}, value: ${response.value}`);
+            console.log(`[${node}] Get request status: ${response.status}, value: ${response.value}`);
         }
 
         rl.prompt();
@@ -88,7 +89,7 @@ const rl = readline.createInterface({
 
 console.log("Comandos:");
 console.log("  PUT: chave = valor");
-console.log("  GET: chave");
+console.log("  GET: nodeX chave");
 console.log("  Sair: exit");
 
 rl.prompt();
@@ -116,14 +117,31 @@ rl.on('line', (line) => {
 
     } else {
         // GET
-        const key = line.trim();
+        const partes = line.split(/\s+/);
 
-        if (key === "") {
-            console.log("Informe uma chave.");
-        } else {
-            get(key);
+        if (partes.length !== 2) {
+
+            console.log("Use:");
+            console.log("node1 chave");
+            console.log("node2 chave");
+            console.log("node3 chave");
+            console.log("node4 chave");
+
+            rl.prompt();
+            return;
         }
 
+        const node = partes[0];
+        const key = partes[1];
+
+        if (!nodes_settings[node]) {
+
+            console.log("Nó inválido.");
+
+            rl.prompt();
+            return;
+        }
+        get(node, key);
     }
 
 });
