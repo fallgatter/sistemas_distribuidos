@@ -270,6 +270,8 @@ class Node:
         return True, -1, -1
 
     def replicate_log_entries(self, entry):
+        print(self.state)
+
         if self.state != "leader":
             return False
 

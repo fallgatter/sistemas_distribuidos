@@ -1,40 +1,32 @@
 {
     "current_term": 2,
-    "voted_for": "node2",
-    "commit_index": 7,
-    "last_applied": 7,
+    "voted_for": null,
+    "commit_index": 5,
+    "last_applied": 5,
     "log": [
         {
             "term": 1,
-            "command": "x=20"
+            "command": "x=10"
         },
         {
             "term": 1,
-            "command": "y=30"
-        },
-        {
-            "term": 1,
-            "command": "t=488"
-        },
-        {
-            "term": 1,
-            "command": "m=9999"
-        },
-        {
-            "term": 1,
-            "command": "p=152"
-        },
-        {
-            "term": 1,
-            "command": "r=0909"
-        },
-        {
-            "term": 1,
-            "command": "r=0909"
+            "command": "y=20"
         },
         {
             "term": 2,
-            "command": "l=2323"
+            "command": "z=30"
+        },
+        {
+            "term": 2,
+            "command": "w=40"
+        },
+        {
+            "term": 2,
+            "command": "l=80"
+        },
+        {
+            "term": 2,
+            "command": "k=90"
         }
     ]
 }

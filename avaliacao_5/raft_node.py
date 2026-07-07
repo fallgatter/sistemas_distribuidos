@@ -210,7 +210,8 @@ class Node:
                 print(f"Node {self.node_id} became the leader for term {self.current_term}")
                 self.save_state()
 
-                for nid in self.valid_friends:
+                self.valid_friends = self.friends.copy()
+                for nid in self.friends:
                     self.nextIndex[nid] = len(self.log)
                     self.matchIndex[nid] = -1
 
@@ -246,6 +247,7 @@ class Node:
                 if entries_to_send and response.response:
                     self.matchIndex[friend_id] = prev_log_index + len(entries_to_send)
                     self.nextIndex[friend_id] = self.matchIndex[friend_id] + 1
+                    self.valid_friends[friend_id] = friend_address
                 if not response.response:
                     print(f"{friend_id} is not in sync. Syncing log...")
                     self.handle_log_consistency(friend_id, friend_address, response.conflict_index, response.conflict_term)
@@ -263,7 +265,7 @@ class Node:
             except Exception as e:
                 print(f"Failed to send heartbeat to {friend_id}: {e}")     
 
-            time.sleep(0.1)
+            time.sleep(0.25)
 
     def append_entry(self, leader_id, term, prev_log_index, prev_log_term, entries, leader_commit):
         if term > self.current_term:
@@ -317,6 +319,8 @@ class Node:
         acks = 1
 
         for friend_id, friend_address in self.valid_friends.items():
+            if friend_id == self.node_id:
+                continue
             try:
                 prev_log_index = self.nextIndex[friend_id] - 1
                 if prev_log_index >= 0:
