@@ -12,6 +12,9 @@ import raft_pb2_grpc
 
 CLUSTER_SIZE = 4
 
+def clean_entries(entries):
+    return [{"term": e["term"], "command": e["command"]} for e in entries]
+
 class RaftServicer(raft_pb2_grpc.RaftServicer):
     def __init__(self, node):
         self.node = node
@@ -21,7 +24,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         return raft_pb2.VoteResponse(vote=vote)
 
     def append_entry(self, request, context):
-        entries = [{"term": e.term, "command": e.command} for e in request.entries]
+        entries = [{"term": e.term, "command": e.command, "committed": False} for e in request.entries]
         response, conflict_index, conflict_term = self.node.append_entry(request.leader_id, request.term, request.prev_log_index, request.prev_log_term, entries, request.leader_commit)
         return raft_pb2.AppendEntryResponse(response=response, conflict_index=conflict_index, conflict_term=conflict_term)
 
@@ -242,7 +245,7 @@ class Node:
                     print(f"Sending log entries to {friend_id}: {entries_to_send}")
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=entries_to_send, leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries(entries_to_send), leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 if entries_to_send and response.response:
                     self.matchIndex[friend_id] = prev_log_index + len(entries_to_send)
@@ -330,7 +333,7 @@ class Node:
 
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=[entry], leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries([entry]), leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 channel.close()
                              
@@ -379,7 +382,7 @@ class Node:
             try:
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=entries_missing, leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries(entries_missing), leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 if response.response:
                     self.matchIndex[friend_id] = len(self.log) - 1
@@ -402,6 +405,7 @@ class Node:
             while (self.last_applied < self.commit_index) and (self.last_applied + 1 < len(self.log)):
                 self.last_applied += 1
                 entry = self.log[self.last_applied]
+                entry['committed'] = True
                 print(f"{self.node_id} committed log entry: {entry}")
             
             self.save_state()
@@ -412,7 +416,7 @@ class Node:
         if self.state != 'leader':
             return "Not the leader", f"{self.leader_address_host}:{self.leader_address_port}"
 
-        entry = {'term': self.current_term, 'command': f'{key}={value}'}
+        entry = {'term': self.current_term, 'command': f'{key}={value}', 'committed': False}
         
         self.log.append(entry)
         self.save_state()
