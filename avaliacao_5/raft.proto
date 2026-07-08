@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package raft;
+
+service Raft{
+    rpc request_vote(VoteRequest)
+        returns (VoteResponse);
+    rpc append_entry(AppendEntryRequest)
+        returns (AppendEntryResponse);
+    rpc commit_entries(CommitRequest)
+        returns (CommitResponse);
+    rpc client_request(ClientRequest)
+        returns (ClientResponse);
+}
+
+service Client{
+    rpc client_put(ClientPutRequest)
+        returns (ClientPutResponse);
+    rpc client_get(ClientGetRequest)
+        returns (ClientGetResponse);
+}
+
+message ClientPutRequest{
+    string key = 1;
+    string value = 2;
+}
+
+message ClientPutResponse{
+    string status = 1;
+    string value = 2;
+}
+
+message ClientGetRequest{
+    string key = 1;
+}
+
+message ClientGetResponse{
+    string status = 1;
+    string value = 2;
+}
+
+message VoteRequest{
+    string candidate_id = 1;
+    int32 term = 2;
+    int32 last_log_index = 3;
+    int32 last_log_term = 4;
+}
+
+message VoteResponse{
+    bool vote = 1;
+}
+
+message LogEntry{
+    int32 term = 1;
+    string command = 2;
+    bool committed = 3;
+}
+
+message AppendEntryRequest{
+    string leader_id = 1;
+    int32 term = 2;
+    int32 prev_log_index = 3;
+    int32 prev_log_term = 4;
+    repeated LogEntry entries = 5;
+    int32 leader_commit = 6;
+}
+
+message AppendEntryResponse{
+    bool response = 1;
+    int32 conflict_index = 2;
+    int32 conflict_term = 3;
+}
+
+message CommitRequest{
+    int32 commit_index = 1;
+}
+
+message CommitResponse{
+    bool response = 1;
+}
+
+message ClientRequest{
+    string command = 1;
+}
+
+message ClientResponse{
+    bool response = 1;
+}

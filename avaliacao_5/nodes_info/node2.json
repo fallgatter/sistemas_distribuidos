@@ -1,0 +1,23 @@
+{
+    "current_term": 2,
+    "voted_for": null,
+    "commit_index": 2,
+    "last_applied": 2,
+    "log": [
+        {
+            "term": 1,
+            "command": "x=10",
+            "committed": true
+        },
+        {
+            "term": 1,
+            "command": "y=20",
+            "committed": true
+        },
+        {
+            "term": 2,
+            "command": "z=30",
+            "committed": true
+        }
+    ]
+}
