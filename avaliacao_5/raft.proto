@@ -53,6 +53,7 @@ message VoteResponse{
 message LogEntry{
     int32 term = 1;
     string command = 2;
+    bool committed = 3;
 }
 
 message AppendEntryRequest{

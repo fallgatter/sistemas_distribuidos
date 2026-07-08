@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\x12\x04raft\".\n\x10\x43lientPutRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"2\n\x11\x43lientPutResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x1f\n\x10\x43lientGetRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\"2\n\x11\x43lientGetResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"`\n\x0bVoteRequest\x12\x14\n\x0c\x63\x61ndidate_id\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\x05\x12\x16\n\x0elast_log_index\x18\x03 \x01(\x05\x12\x15\n\rlast_log_term\x18\x04 \x01(\x05\"\x1c\n\x0cVoteResponse\x12\x0c\n\x04vote\x18\x01 \x01(\x08\")\n\x08LogEntry\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x0f\n\x07\x63ommand\x18\x02 \x01(\t\"\x9c\x01\n\x12\x41ppendEntryRequest\x12\x11\n\tleader_id\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\x05\x12\x16\n\x0eprev_log_index\x18\x03 \x01(\x05\x12\x15\n\rprev_log_term\x18\x04 \x01(\x05\x12\x1f\n\x07\x65ntries\x18\x05 \x03(\x0b\x32\x0e.raft.LogEntry\x12\x15\n\rleader_commit\x18\x06 \x01(\x05\"V\n\x13\x41ppendEntryResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\x12\x16\n\x0e\x63onflict_index\x18\x02 \x01(\x05\x12\x15\n\rconflict_term\x18\x03 \x01(\x05\"%\n\rCommitRequest\x12\x14\n\x0c\x63ommit_index\x18\x01 \x01(\x05\"\"\n\x0e\x43ommitResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\" \n\rClientRequest\x12\x0f\n\x07\x63ommand\x18\x01 \x01(\t\"\"\n\x0e\x43lientResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\x32\xfc\x01\n\x04Raft\x12\x35\n\x0crequest_vote\x12\x11.raft.VoteRequest\x1a\x12.raft.VoteResponse\x12\x43\n\x0c\x61ppend_entry\x12\x18.raft.AppendEntryRequest\x1a\x19.raft.AppendEntryResponse\x12;\n\x0e\x63ommit_entries\x12\x13.raft.CommitRequest\x1a\x14.raft.CommitResponse\x12;\n\x0e\x63lient_request\x12\x13.raft.ClientRequest\x1a\x14.raft.ClientResponse2\x86\x01\n\x06\x43lient\x12=\n\nclient_put\x12\x16.raft.ClientPutRequest\x1a\x17.raft.ClientPutResponse\x12=\n\nclient_get\x12\x16.raft.ClientGetRequest\x1a\x17.raft.ClientGetResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nraft.proto\x12\x04raft\".\n\x10\x43lientPutRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"2\n\x11\x43lientPutResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"\x1f\n\x10\x43lientGetRequest\x12\x0b\n\x03key\x18\x01 \x01(\t\"2\n\x11\x43lientGetResponse\x12\x0e\n\x06status\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t\"`\n\x0bVoteRequest\x12\x14\n\x0c\x63\x61ndidate_id\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\x05\x12\x16\n\x0elast_log_index\x18\x03 \x01(\x05\x12\x15\n\rlast_log_term\x18\x04 \x01(\x05\"\x1c\n\x0cVoteResponse\x12\x0c\n\x04vote\x18\x01 \x01(\x08\"<\n\x08LogEntry\x12\x0c\n\x04term\x18\x01 \x01(\x05\x12\x0f\n\x07\x63ommand\x18\x02 \x01(\t\x12\x11\n\tcommitted\x18\x03 \x01(\x08\"\x9c\x01\n\x12\x41ppendEntryRequest\x12\x11\n\tleader_id\x18\x01 \x01(\t\x12\x0c\n\x04term\x18\x02 \x01(\x05\x12\x16\n\x0eprev_log_index\x18\x03 \x01(\x05\x12\x15\n\rprev_log_term\x18\x04 \x01(\x05\x12\x1f\n\x07\x65ntries\x18\x05 \x03(\x0b\x32\x0e.raft.LogEntry\x12\x15\n\rleader_commit\x18\x06 \x01(\x05\"V\n\x13\x41ppendEntryResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\x12\x16\n\x0e\x63onflict_index\x18\x02 \x01(\x05\x12\x15\n\rconflict_term\x18\x03 \x01(\x05\"%\n\rCommitRequest\x12\x14\n\x0c\x63ommit_index\x18\x01 \x01(\x05\"\"\n\x0e\x43ommitResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\" \n\rClientRequest\x12\x0f\n\x07\x63ommand\x18\x01 \x01(\t\"\"\n\x0e\x43lientResponse\x12\x10\n\x08response\x18\x01 \x01(\x08\x32\xfc\x01\n\x04Raft\x12\x35\n\x0crequest_vote\x12\x11.raft.VoteRequest\x1a\x12.raft.VoteResponse\x12\x43\n\x0c\x61ppend_entry\x12\x18.raft.AppendEntryRequest\x1a\x19.raft.AppendEntryResponse\x12;\n\x0e\x63ommit_entries\x12\x13.raft.CommitRequest\x1a\x14.raft.CommitResponse\x12;\n\x0e\x63lient_request\x12\x13.raft.ClientRequest\x1a\x14.raft.ClientResponse2\x86\x01\n\x06\x43lient\x12=\n\nclient_put\x12\x16.raft.ClientPutRequest\x1a\x17.raft.ClientPutResponse\x12=\n\nclient_get\x12\x16.raft.ClientGetRequest\x1a\x17.raft.ClientGetResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -44,21 +44,21 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_VOTERESPONSE']._serialized_start=303
   _globals['_VOTERESPONSE']._serialized_end=331
   _globals['_LOGENTRY']._serialized_start=333
-  _globals['_LOGENTRY']._serialized_end=374
-  _globals['_APPENDENTRYREQUEST']._serialized_start=377
-  _globals['_APPENDENTRYREQUEST']._serialized_end=533
-  _globals['_APPENDENTRYRESPONSE']._serialized_start=535
-  _globals['_APPENDENTRYRESPONSE']._serialized_end=621
-  _globals['_COMMITREQUEST']._serialized_start=623
-  _globals['_COMMITREQUEST']._serialized_end=660
-  _globals['_COMMITRESPONSE']._serialized_start=662
-  _globals['_COMMITRESPONSE']._serialized_end=696
-  _globals['_CLIENTREQUEST']._serialized_start=698
-  _globals['_CLIENTREQUEST']._serialized_end=730
-  _globals['_CLIENTRESPONSE']._serialized_start=732
-  _globals['_CLIENTRESPONSE']._serialized_end=766
-  _globals['_RAFT']._serialized_start=769
-  _globals['_RAFT']._serialized_end=1021
-  _globals['_CLIENT']._serialized_start=1024
-  _globals['_CLIENT']._serialized_end=1158
+  _globals['_LOGENTRY']._serialized_end=393
+  _globals['_APPENDENTRYREQUEST']._serialized_start=396
+  _globals['_APPENDENTRYREQUEST']._serialized_end=552
+  _globals['_APPENDENTRYRESPONSE']._serialized_start=554
+  _globals['_APPENDENTRYRESPONSE']._serialized_end=640
+  _globals['_COMMITREQUEST']._serialized_start=642
+  _globals['_COMMITREQUEST']._serialized_end=679
+  _globals['_COMMITRESPONSE']._serialized_start=681
+  _globals['_COMMITRESPONSE']._serialized_end=715
+  _globals['_CLIENTREQUEST']._serialized_start=717
+  _globals['_CLIENTREQUEST']._serialized_end=749
+  _globals['_CLIENTRESPONSE']._serialized_start=751
+  _globals['_CLIENTRESPONSE']._serialized_end=785
+  _globals['_RAFT']._serialized_start=788
+  _globals['_RAFT']._serialized_end=1040
+  _globals['_CLIENT']._serialized_start=1043
+  _globals['_CLIENT']._serialized_end=1177
 # @@protoc_insertion_point(module_scope)

@@ -12,9 +12,6 @@ import raft_pb2_grpc
 
 CLUSTER_SIZE = 4
 
-def clean_entries(entries):
-    return [{"term": e["term"], "command": e["command"]} for e in entries]
-
 class RaftServicer(raft_pb2_grpc.RaftServicer):
     def __init__(self, node):
         self.node = node
@@ -24,7 +21,7 @@ class RaftServicer(raft_pb2_grpc.RaftServicer):
         return raft_pb2.VoteResponse(vote=vote)
 
     def append_entry(self, request, context):
-        entries = [{"term": e.term, "command": e.command, "committed": False} for e in request.entries]
+        entries = [{"term": e.term, "command": e.command, "committed": e.committed} for e in request.entries]
         response, conflict_index, conflict_term = self.node.append_entry(request.leader_id, request.term, request.prev_log_index, request.prev_log_term, entries, request.leader_commit)
         return raft_pb2.AppendEntryResponse(response=response, conflict_index=conflict_index, conflict_term=conflict_term)
 
@@ -81,6 +78,10 @@ class Node:
 
         self.valid_friends = self.friends.copy()
 
+        os.makedirs("nodes_info", exist_ok=True)
+        self.state_file = f"nodes_info/{self.node_id}.json"
+        self.load_state()
+
         self.raft_server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
         raft_pb2_grpc.add_RaftServicer_to_server(RaftServicer(self), self.raft_server)
         self.raft_server.add_insecure_port(f'{self.host}:{self.port}')
@@ -90,10 +91,6 @@ class Node:
         raft_pb2_grpc.add_ClientServicer_to_server(ClientServicer(self), self.client_server)
         self.client_server.add_insecure_port(f'{self.host}:{self.port - 1000}')
         self.client_server.start()
-
-        os.makedirs("nodes_info", exist_ok=True)
-        self.state_file = f"nodes_info/{self.node_id}.json"
-        self.load_state()
 
         print(f"Node {self.node_id} is ready. Object address = {self.host}:{self.port}")
 
@@ -242,18 +239,23 @@ class Node:
                 
                 entries_to_send = self.log[self.nextIndex[friend_id]:]
                 if entries_to_send:
-                    print(f"Sending log entries to {friend_id}: {entries_to_send}")
+                    print(f"Log entries pending for {friend_id}: {entries_to_send}")
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries(entries_to_send), leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=entries_to_send, leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 if entries_to_send and response.response:
+                    #self.handle_log_consistency(friend_id, friend_address, response.conflict_index, response.conflict_term)
                     self.matchIndex[friend_id] = prev_log_index + len(entries_to_send)
                     self.nextIndex[friend_id] = self.matchIndex[friend_id] + 1
                     self.valid_friends[friend_id] = friend_address
+                    if (len(self.valid_friends) == 1 or len(self.valid_friends) == 2) and self.commit_index < len(self.log) - 1:
+                        self.commit_entries(len(self.log) - 1)
                 if not response.response:
                     print(f"{friend_id} is not in sync. Syncing log...")
                     self.handle_log_consistency(friend_id, friend_address, response.conflict_index, response.conflict_term)
+                    if (len(self.valid_friends) == 1 or len(self.valid_friends) == 2) and self.commit_index < len(self.log) - 1:
+                        self.commit_entries(len(self.log) - 1)
                 channel.close()
             
             except grpc.RpcError as e:
@@ -314,7 +316,7 @@ class Node:
         print(self.log)
 
         return True, -1, -1
-
+    
     def replicate_log_entries(self, entry):
         if self.state != "leader":
             return False
@@ -333,7 +335,7 @@ class Node:
 
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries([entry]), leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=[entry], leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 channel.close()
                              
@@ -352,7 +354,6 @@ class Node:
         
         if acks > total_nodes // 2:            
             self.commit_entries(prev_log_index + 1)
-            
             for friend_id, friend_address in self.friends.items():
                 try:
                     channel = grpc.insecure_channel(friend_address)
@@ -364,7 +365,6 @@ class Node:
                     if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                         print(f"Timeout while sending commit index to {friend_id}")
                     print(f"Failed to send commit index to {friend_id}: {e}")
-            
             return True
         else:   
             print(f"{self.node_id} failed to commit log entry: {entry}")
@@ -378,17 +378,18 @@ class Node:
             prev_log_term = self.log[prev_log_index]['term'] if prev_log_index >= 0 else 0
 
             entries_missing = self.log[self.nextIndex[friend_id]:]     
-            print(entries_missing)
+            print(f"Entries missing for {friend_id}: {entries_missing}")
             try:
                 channel = grpc.insecure_channel(friend_address)
                 stub = raft_pb2_grpc.RaftStub(channel)
-                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=clean_entries(entries_missing), leader_commit=self.commit_index)
+                req = raft_pb2.AppendEntryRequest(leader_id=self.node_id, term=self.current_term, prev_log_index=prev_log_index, prev_log_term=prev_log_term, entries=entries_missing, leader_commit=self.commit_index)
                 response = stub.append_entry(req, timeout=0.5)
                 if response.response:
                     self.matchIndex[friend_id] = len(self.log) - 1
                     self.nextIndex[friend_id] = len(self.log)
                     req = raft_pb2.CommitRequest(commit_index=self.commit_index)
-                    stub.commit_entries(req, timeout=0.5)    
+                    stub.commit_entries(req, timeout=0.5)
+                    channel.close()    
                     break
                 channel.close()
             except Exception as e:
